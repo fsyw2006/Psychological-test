@@ -1,0 +1,11 @@
+node_modules
+.next
+.open-next
+.vercel
+.env
+.env*.local
+dist
+coverage
+*.log
+prisma/dev.db
+wrangler.toml

@@ -1,0 +1,485 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum CategoryType {
+  TEST
+  ARTICLE
+}
+
+enum TestStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum QuestionType {
+  SINGLE
+  MULTIPLE
+  LIKERT
+}
+
+enum ArticleStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  FAILED
+  CLOSED
+  REFUNDED
+}
+
+enum PaymentProvider {
+  WECHAT
+  ALIPAY
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  REFUNDING
+  REFUNDED
+}
+
+enum ProductType {
+  MEMBERSHIP_MONTHLY
+  MEMBERSHIP_YEARLY
+  REPORT_UNLOCK
+  PREMIUM_TEST
+}
+
+enum MembershipPlan {
+  FREE
+  MONTHLY
+  YEARLY
+}
+
+enum MembershipStatus {
+  ACTIVE
+  EXPIRED
+  CANCELLED
+}
+
+enum ReportAccessType {
+  FREE
+  MEMBERSHIP
+  SINGLE_PURCHASE
+  ADMIN
+}
+
+model User {
+  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  authUserId     String?      @unique @map("auth_user_id") @db.Uuid
+  email          String       @unique
+  name           String?
+  avatarUrl      String?      @map("avatar_url")
+  role           UserRole     @default(USER)
+  dailyTestCount Int          @default(0) @map("daily_test_count")
+  dailyResetAt   DateTime     @default(now()) @map("daily_reset_at")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+
+  answers     Answer[]
+  results     Result[]
+  orders      Order[]
+  payments    Payment[]
+  memberships Membership[]
+  admin       Admin?
+  articles    Article[] @relation("ArticleAuthor")
+  articleFavorites ArticleFavorite[]
+  usageLimits UsageLimit[]
+  userReports UserReport[]
+  aiConversations AiConversation[]
+  aiUsageRecords AiUsageRecord[]
+
+  @@index([authUserId])
+  @@index([role])
+  @@map("users")
+}
+
+model Category {
+  id          String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  slug        String
+  name        String
+  description String?
+  type        CategoryType @default(TEST)
+  sortOrder   Int          @default(0) @map("sort_order")
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+
+  tests    Test[]
+  articles Article[]
+
+  @@unique([slug, type])
+  @@index([type])
+  @@map("categories")
+}
+
+model Test {
+  id               String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  slug             String     @unique
+  title            String
+  subtitle         String?
+  description      String
+  categoryId       String     @map("category_id") @db.Uuid
+  estimatedMinutes Int        @default(5) @map("estimated_minutes")
+  status           TestStatus @default(DRAFT)
+  isPremium        Boolean    @default(false) @map("is_premium")
+  priceCents       Int        @default(0) @map("price_cents")
+  tags             String[]
+  scoring          Json
+  reportTemplates  Json       @map("report_templates")
+  completionCount  Int        @default(0) @map("completion_count")
+  createdAt        DateTime   @default(now()) @map("created_at")
+  updatedAt        DateTime   @updatedAt @map("updated_at")
+
+  category  Category   @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  questions Question[]
+  results   Result[]
+  reportTemplateRows ReportTemplate[]
+
+  @@index([categoryId])
+  @@index([status])
+  @@map("tests")
+}
+
+model Question {
+  id        String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  testId    String       @map("test_id") @db.Uuid
+  order     Int
+  type      QuestionType
+  title     String
+  helper    String?
+  required  Boolean      @default(true)
+  min       Int?
+  max       Int?
+  dimension String?
+  options   Json
+  createdAt DateTime     @default(now()) @map("created_at")
+  updatedAt DateTime     @updatedAt @map("updated_at")
+
+  test    Test     @relation(fields: [testId], references: [id], onDelete: Cascade)
+  answers Answer[]
+
+  @@unique([testId, order])
+  @@index([testId])
+  @@map("questions")
+}
+
+model Answer {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId     String   @map("user_id") @db.Uuid
+  resultId   String   @map("result_id") @db.Uuid
+  questionId String   @map("question_id") @db.Uuid
+  values     Json
+  score      Int      @default(0)
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  result   Result   @relation(fields: [resultId], references: [id], onDelete: Cascade)
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([resultId, questionId])
+  @@index([userId])
+  @@map("answers")
+}
+
+model Result {
+  id             String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId         String           @map("user_id") @db.Uuid
+  testId         String           @map("test_id") @db.Uuid
+  score          Int
+  maxScore       Int              @map("max_score")
+  type           String
+  summary        String
+  dimensions     Json
+  advancedReport Json             @map("advanced_report")
+  isUnlocked     Boolean          @default(false) @map("is_unlocked")
+  accessType     ReportAccessType @default(FREE) @map("access_type")
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  test    Test    @relation(fields: [testId], references: [id], onDelete: Restrict)
+  answers Answer[]
+  orders  Order[]
+  userReports UserReport[]
+
+  @@index([userId, createdAt])
+  @@index([testId])
+  @@map("results")
+}
+
+model Article {
+  id             String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  slug           String        @unique
+  title          String
+  excerpt        String
+  content        String
+  categoryId     String        @map("category_id") @db.Uuid
+  authorId       String?       @map("author_id") @db.Uuid
+  tags           String[]
+  readingMinutes Int           @default(5) @map("reading_minutes")
+  status         ArticleStatus @default(DRAFT)
+  publishedAt    DateTime?     @map("published_at")
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+
+  category  Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  author    User?    @relation("ArticleAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  favorites ArticleFavorite[]
+
+  @@index([categoryId])
+  @@index([status, publishedAt])
+  @@map("articles")
+}
+
+model ArticleFavorite {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  articleId String   @map("article_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  article Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, articleId])
+  @@index([userId])
+  @@index([articleId])
+  @@map("article_favorites")
+}
+
+model Order {
+  id              String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orderNo         String      @unique @map("order_no")
+  userId          String      @map("user_id") @db.Uuid
+  resultId        String?     @map("result_id") @db.Uuid
+  relatedReportId String?     @map("related_report_id") @db.Uuid
+  planId          String?     @map("plan_id") @db.Uuid
+  productType     ProductType @map("product_type")
+  productName     String      @map("product_name")
+  amountCents     Int         @map("amount_cents")
+  currency        String      @default("CNY")
+  status          OrderStatus @default(PENDING)
+  paymentChannel  String?     @map("payment_channel")
+  expiresAt       DateTime?   @map("expires_at")
+  paidAt          DateTime?   @map("paid_at")
+  metadata        Json?
+  createdAt       DateTime    @default(now()) @map("created_at")
+  updatedAt       DateTime    @updatedAt @map("updated_at")
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  result   Result?   @relation(fields: [resultId], references: [id], onDelete: SetNull)
+  plan     Plan?     @relation(fields: [planId], references: [id], onDelete: SetNull)
+  payments Payment[]
+
+  @@index([userId, createdAt])
+  @@index([status])
+  @@map("orders")
+}
+
+model Payment {
+  id              String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orderId         String          @map("order_id") @db.Uuid
+  userId          String          @map("user_id") @db.Uuid
+  provider        PaymentProvider
+  status          PaymentStatus   @default(PENDING)
+  amountCents     Int             @map("amount_cents")
+  providerOrderId String?         @map("provider_order_id")
+  transactionId   String?         @map("transaction_id")
+  tradeState      String?         @map("trade_state")
+  rawPayload      Json?           @map("raw_payload")
+  refundedCents   Int             @default(0) @map("refunded_cents")
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@index([provider, providerOrderId])
+  @@map("payments")
+}
+
+model Membership {
+  id        String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String           @map("user_id") @db.Uuid
+  plan      MembershipPlan
+  status    MembershipStatus @default(ACTIVE)
+  startsAt  DateTime         @default(now()) @map("starts_at")
+  endsAt    DateTime?        @map("ends_at")
+  orderId   String?          @map("order_id") @db.Uuid
+  createdAt DateTime         @default(now()) @map("created_at")
+  updatedAt DateTime         @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([endsAt])
+  @@map("memberships")
+}
+
+model ReportTemplate {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  testId         String   @map("test_id") @db.Uuid
+  resultType     String   @map("result_type")
+  basicContent   Json     @map("basic_content")
+  premiumContent Json     @map("premium_content")
+  suggestions    Json
+  category       String?
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  test Test @relation(fields: [testId], references: [id], onDelete: Cascade)
+
+  @@unique([testId, resultType])
+  @@index([testId, isActive])
+  @@map("report_templates")
+}
+
+model UserReport {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  resultId  String   @map("result_id") @db.Uuid
+  accessType ReportAccessType @default(FREE) @map("access_type")
+  unlockedAt DateTime? @map("unlocked_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  result Result @relation(fields: [resultId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, resultId])
+  @@index([userId])
+  @@map("user_reports")
+}
+
+model Plan {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  slug        String   @unique
+  name        String
+  planType    String   @map("plan_type")
+  priceCents  Int      @map("price_cents")
+  period      String
+  description String
+  features    String[]
+  isActive    Boolean  @default(true) @map("is_active")
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  orders Order[]
+
+  @@index([isActive, sortOrder])
+  @@map("plans")
+}
+
+model UsageLimit {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  date      DateTime @db.Date
+  testCount Int      @default(0) @map("test_count")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@index([date])
+  @@map("usage_limits")
+}
+
+model AdminConfig {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  key         String   @unique
+  value       Json
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("admin_configs")
+}
+
+model AiConversation {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  title     String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user     User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages AiMessage[]
+
+  @@index([userId, updatedAt])
+  @@map("ai_conversations")
+}
+
+model AiMessage {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  conversationId String   @map("conversation_id") @db.Uuid
+  role           String
+  content        String
+  tokenCount     Int      @default(0) @map("token_count")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  conversation AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@map("ai_messages")
+}
+
+model AiUsageRecord {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String   @map("user_id") @db.Uuid
+  provider    String
+  model       String
+  tokenInput  Int      @default(0) @map("token_input")
+  tokenOutput Int      @default(0) @map("token_output")
+  totalCost   Decimal  @default(0) @map("total_cost") @db.Decimal(10, 6)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("ai_usage_records")
+}
+
+model Admin {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String   @unique @map("user_id") @db.Uuid
+  permissions String[]
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("admins")
+}
+
+model SystemConfig {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  key         String   @unique
+  value       Json
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("system_configs")
+}
