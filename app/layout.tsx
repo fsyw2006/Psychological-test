@@ -4,7 +4,6 @@ import "@/app/globals.css";
 import { SiteFooter } from "@/components/layout/site-footer";
 import { SiteHeader } from "@/components/layout/site-header";
 import { ThemeProvider } from "@/components/layout/theme-provider";
-import { getCurrentProfile } from "@/lib/auth";
 import { absoluteUrl } from "@/lib/utils";
 
 export const viewport: Viewport = {
@@ -67,16 +66,13 @@ export const metadata: Metadata = {
   }
 };
 
-export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  const profile = await getCurrentProfile();
-  const headerUser = profile ? { email: profile.email, name: profile.name } : null;
-
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="zh-CN" suppressHydrationWarning>
       <body>
         <ThemeProvider>
           <div className="flex min-h-screen flex-col">
-            <SiteHeader initialUser={headerUser} />
+            <SiteHeader />
             <main className="flex-1">{children}</main>
             <SiteFooter />
           </div>
