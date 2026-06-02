@@ -7,7 +7,6 @@ import { Loader2, Mail, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 export function AuthForm({ mode }: { mode: "login" | "register" }) {
   const router = useRouter();
@@ -24,40 +23,30 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
     setLoading(true);
     setMessage("");
 
-    if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
-      router.push(next);
-      return;
-    }
-
-    const supabase = createSupabaseBrowserClient();
-    const result =
-      mode === "login"
-        ? await supabase.auth.signInWithPassword({ email, password })
-        : await supabase.auth.signUp({
-            email,
-            password,
-            options: {
-              data: { name },
-              emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(
-                next
-              )}`
-            }
-          });
+    const response = await fetch(`/api/auth/${mode === "login" ? "login" : "register"}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password, name, next })
+    });
+    const result = (await response.json().catch(() => null)) as {
+      error?: string;
+      needsEmailConfirmation?: boolean;
+    } | null;
 
     setLoading(false);
 
-    if (result.error) {
-      setMessage(result.error.message);
+    if (!response.ok || result?.error) {
+      setMessage(result?.error || "登录失败，请稍后再试。");
       return;
     }
 
-    if (mode === "register" && !result.data.session) {
+    if (mode === "register" && result?.needsEmailConfirmation) {
       setMessage("注册邮件已发送，请完成邮箱确认。");
       return;
     }
 
-    router.push(next);
     router.refresh();
+    router.push(next);
   }
 
   return (
