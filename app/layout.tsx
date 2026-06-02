@@ -78,4 +78,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           <div className="flex min-h-screen flex-col">
             <SiteHeader initialUser={headerUser} />
             <main className="flex-1">{children}</main>
-            <Sit
+            <SiteFooter />
+          </div>
+        </ThemeProvider>
+      </body>
+    </html>
+  );
+}
