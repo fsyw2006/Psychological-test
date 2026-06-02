@@ -1,12 +1,20 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "psychological-test",
+  "name": "soul-house",
   "main": ".open-next/worker.js",
   "compatibility_date": "2026-06-01",
   "compatibility_flags": ["nodejs_compat"],
   "assets": {
     "directory": ".open-next/assets",
     "binding": "ASSETS"
+  },
+  "vars": {
+    "NEXT_PUBLIC_SUPABASE_URL": "https://wrtgytkjnfvmmmkeltob.supabase.co",
+    "NEXT_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_1ezAkyKuBpW3uMf5WyQblA_FQXGENrd",
+    "NEXT_PUBLIC_SITE_URL": "https://psychological-test.2899540894.workers.dev",
+    "NEXT_PUBLIC_SITE_NAME": "心灵小屋",
+    "MOCK_PAYMENT_ENABLED": "true",
+    "AI_CHAT_ENABLED": "false"
   },
   "observability": {
     "enabled": true
