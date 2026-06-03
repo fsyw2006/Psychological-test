@@ -37,6 +37,10 @@ export async function createCheckoutOrder({
 }) {
   const product = await productForPlan(plan);
 
+  if (product.productType === "REPORT_UNLOCK" && !resultId) {
+    throw new Error("Missing report id for single report unlock.");
+  }
+
   if (!hasServiceRoleEnv()) {
     return {
       id: `demo_${nanoid(8)}`,
@@ -52,6 +56,27 @@ export async function createCheckoutOrder({
   }
 
   const supabase = createSupabaseServiceClient();
+
+  if (product.productType === "REPORT_UNLOCK" && resultId) {
+    const { data: result, error: resultError } = await supabase
+      .from("results")
+      .select("id,user_id,is_unlocked")
+      .eq("id", resultId)
+      .single();
+
+    if (resultError || !result) {
+      throw new Error("Report not found.");
+    }
+
+    if (result.user_id !== profile.id && profile.role !== "ADMIN") {
+      throw new Error("Forbidden report unlock.");
+    }
+
+    if (result.is_unlocked) {
+      throw new Error("Report already unlocked.");
+    }
+  }
+
   const { data, error } = await supabase
     .from("orders")
     .insert({
