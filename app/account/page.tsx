@@ -3,6 +3,9 @@ import { ClipboardList, Crown, FileText, ReceiptText } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getCurrentProfile } from "@/lib/auth";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 const items = [
   {
     href: "/account/tests",
