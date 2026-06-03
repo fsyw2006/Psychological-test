@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2, Mail, ShieldCheck } from "lucide-react";
@@ -12,11 +12,23 @@ function getFriendlyAuthError(error?: string) {
   const message = (error || "").toLowerCase();
 
   if (message.includes("email rate limit")) {
-    return "邮件发送太频繁了。Supabase 免费内置邮件服务额度较低，请稍后再试，或在 Supabase 配置自定义 SMTP 邮箱服务。";
+    return "邮件发送太频繁了。请稍后再试，或先关闭邮箱确认后再注册。";
   }
 
   if (message.includes("already registered") || message.includes("already exists")) {
     return "这个邮箱已经注册过了，请直接登录，或换一个邮箱测试。";
+  }
+
+  if (message.includes("invalid login credentials")) {
+    return "邮箱或密码不正确，请检查后再试。";
+  }
+
+  if (message.includes("email not confirmed")) {
+    return "邮箱还没有完成确认，请先打开邮箱里的确认链接。";
+  }
+
+  if (message.includes("provider is disabled") || message.includes("disabled")) {
+    return "邮箱登录/注册方式还没有开启，请在 Supabase 的 Email provider 中开启。";
   }
 
   if (message.includes("password")) {
@@ -34,6 +46,7 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const next = searchParams.get("next") || "/account";
+  const submittingRef = useRef(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
@@ -42,14 +55,33 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    if (submittingRef.current || loading) return;
+
+    const cleanEmail = email.trim();
+    if (!cleanEmail || !password) {
+      setMessage("请输入邮箱和密码。");
+      return;
+    }
+
+    if (password.length < 8) {
+      setMessage("密码至少需要 8 位字符。");
+      return;
+    }
+
+    submittingRef.current = true;
     setLoading(true);
     setMessage("");
+
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 15000);
 
     try {
       const response = await fetch(`/api/auth/${mode === "login" ? "login" : "register"}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password, name, next })
+        body: JSON.stringify({ email: cleanEmail, password, name, next }),
+        signal: controller.signal
       });
 
       const result = (await response.json().catch(() => null)) as {
@@ -68,10 +100,13 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
       }
 
       router.refresh();
-      router.push(next);
-    } catch {
-      setMessage("网络请求失败，请刷新页面后再试。");
+      router.replace(next);
+    } catch (error) {
+      const isAbort = error instanceof DOMException && error.name === "AbortError";
+      setMessage(isAbort ? "请求超时，请稍后再试。" : "网络请求失败，请刷新页面后再试。");
     } finally {
+      window.clearTimeout(timeoutId);
+      submittingRef.current = false;
       setLoading(false);
     }
   }
@@ -101,6 +136,7 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
             type="email"
             value={email}
             onChange={(event) => setEmail(event.target.value)}
+            autoComplete="email"
             required
           />
         </div>
@@ -112,6 +148,7 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
             type="password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
+            autoComplete={mode === "login" ? "current-password" : "new-password"}
             required
             minLength={8}
           />
@@ -124,9 +161,9 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
         </div>
       ) : null}
 
-      <Button className="mt-6 w-full" disabled={loading}>
+      <Button type="submit" className="mt-6 w-full" disabled={loading}>
         {loading ? <Loader2 className="animate-spin" /> : <Mail />}
-        {mode === "login" ? "登录" : "创建账户"}
+        {loading ? "处理中..." : mode === "login" ? "登录" : "创建账户"}
       </Button>
     </form>
   );
