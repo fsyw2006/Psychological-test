@@ -68,7 +68,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="zh-CN" suppressHydrationWarning>
+    <html lang="zh-CN" translate="no" suppressHydrationWarning>
       <body>
         <ThemeProvider>
           <div className="flex min-h-screen flex-col">
