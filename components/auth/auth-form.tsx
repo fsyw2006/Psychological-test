@@ -45,7 +45,8 @@ function getFriendlyAuthError(error?: string) {
 export function AuthForm({ mode }: { mode: "login" | "register" }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const next = searchParams.get("next") || "/account";
+  const rawNext = searchParams.get("next") || "/account";
+  const next = rawNext.startsWith("/") && !rawNext.startsWith("//") ? rawNext : "/account";
   const submittingRef = useRef(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -81,6 +82,8 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: cleanEmail, password, name, next }),
+        credentials: "include",
+        cache: "no-store",
         signal: controller.signal
       });
 
@@ -99,8 +102,9 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
         return;
       }
 
+      setMessage(mode === "login" ? "登录成功，正在进入用户中心..." : "注册成功，正在进入用户中心...");
       router.refresh();
-      router.replace(next);
+      window.location.replace(next);
     } catch (error) {
       const isAbort = error instanceof DOMException && error.name === "AbortError";
       setMessage(isAbort ? "请求超时，请稍后再试。" : "网络请求失败，请刷新页面后再试。");
