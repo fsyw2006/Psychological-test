@@ -42,6 +42,40 @@ export async function GET(
     return noStoreJson({ error: "无权访问该报告" }, 403);
   }
 
+  let isUnlocked = Boolean(data.is_unlocked);
+  if (!isUnlocked) {
+    const now = new Date().toISOString();
+    const [{ data: paidOrder }, { data: membership }] = await Promise.all([
+      supabase
+        .from("orders")
+        .select("id")
+        .eq("result_id", id)
+        .eq("user_id", data.user_id)
+        .eq("product_type", "REPORT_UNLOCK")
+        .eq("status", "PAID")
+        .limit(1)
+        .maybeSingle(),
+      supabase
+        .from("memberships")
+        .select("id")
+        .eq("user_id", data.user_id)
+        .eq("status", "ACTIVE")
+        .gte("ends_at", now)
+        .limit(1)
+        .maybeSingle()
+    ]);
+
+    if (paidOrder || membership) {
+      isUnlocked = true;
+      await supabase
+        .from("results")
+        .update({
+          is_unlocked: true,
+          access_type: paidOrder ? "SINGLE_PURCHASE" : "MEMBERSHIP"
+        })
+        .eq("id", id);
+    }
+  }
   return noStoreJson({
     result: {
       id: data.id,
@@ -55,7 +89,7 @@ export async function GET(
       summary: data.summary,
       dimensions: safeJson(data.dimensions, {}),
       advanced: safeJson(data.advanced_report, {}),
-      isUnlocked: data.is_unlocked,
+      isUnlocked,
       createdAt: data.created_at
     }
   });

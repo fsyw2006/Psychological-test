@@ -150,6 +150,62 @@ export async function ensurePaymentRecord({
   return data;
 }
 
+type PaymentServiceClient = ReturnType<typeof createSupabaseServiceClient>;
+
+async function applyPaidOrderEntitlements({
+  supabase,
+  order,
+  now
+}: {
+  supabase: PaymentServiceClient;
+  order: OrderRecord;
+  now: Date;
+}) {
+  if (order.product_type === "MEMBERSHIP_MONTHLY" || order.product_type === "MEMBERSHIP_YEARLY") {
+    const { data: existingMembership } = await supabase
+      .from("memberships")
+      .select("id")
+      .eq("order_id", order.id)
+      .maybeSingle();
+
+    if (!existingMembership) {
+      const isMonthly = order.product_type === "MEMBERSHIP_MONTHLY";
+      const { error } = await supabase.from("memberships").insert({
+        user_id: order.user_id,
+        plan: isMonthly ? "MONTHLY" : "YEARLY",
+        status: "ACTIVE",
+        starts_at: now.toISOString(),
+        ends_at: isMonthly ? addMonths(now, 1).toISOString() : addYears(now, 1).toISOString(),
+        order_id: order.id
+      });
+
+      if (error) {
+        throw new Error(error.message || "Failed to activate membership.");
+      }
+    }
+  }
+
+  if (order.product_type === "REPORT_UNLOCK") {
+    if (!order.result_id) {
+      throw new Error("Missing report id for paid report unlock.");
+    }
+
+    const { data, error } = await supabase
+      .from("results")
+      .update({
+        is_unlocked: true,
+        access_type: "SINGLE_PURCHASE"
+      })
+      .eq("id", order.result_id)
+      .select("id,is_unlocked")
+      .single();
+
+    if (error || !data?.is_unlocked) {
+      throw new Error(error?.message || "Failed to unlock report.");
+    }
+  }
+}
+
 export async function activatePaidOrder({
   orderNo,
   provider,
@@ -167,18 +223,28 @@ export async function activatePaidOrder({
   const order = await getOrderByNo(orderNo);
   if (!order) throw new Error("Order not found.");
 
-  if (order.status === "PAID") return order;
-
   const now = new Date();
-  await supabase
-    .from("orders")
-    .update({
-      status: "PAID",
-      paid_at: now.toISOString()
-    })
-    .eq("id", order.id);
+  let paidOrder = order;
 
-  await supabase
+  if (order.status !== "PAID") {
+    const { data, error } = await supabase
+      .from("orders")
+      .update({
+        status: "PAID",
+        paid_at: now.toISOString()
+      })
+      .eq("id", order.id)
+      .select("*")
+      .single();
+
+    if (error || !data) {
+      throw new Error(error?.message || "Failed to mark order as paid.");
+    }
+
+    paidOrder = data as OrderRecord;
+  }
+
+  const { error: paymentError } = await supabase
     .from("payments")
     .update({
       status: "SUCCESS",
@@ -189,40 +255,18 @@ export async function activatePaidOrder({
     .eq("order_id", order.id)
     .eq("provider", provider);
 
-  if (order.product_type === "MEMBERSHIP_MONTHLY") {
-    await supabase.from("memberships").insert({
-      user_id: order.user_id,
-      plan: "MONTHLY",
-      status: "ACTIVE",
-      starts_at: now.toISOString(),
-      ends_at: addMonths(now, 1).toISOString(),
-      order_id: order.id
-    });
+  if (paymentError) {
+    console.error("Failed to update payment record.", paymentError);
   }
 
-  if (order.product_type === "MEMBERSHIP_YEARLY") {
-    await supabase.from("memberships").insert({
-      user_id: order.user_id,
-      plan: "YEARLY",
-      status: "ACTIVE",
-      starts_at: now.toISOString(),
-      ends_at: addYears(now, 1).toISOString(),
-      order_id: order.id
-    });
-  }
-
-  if (order.product_type === "REPORT_UNLOCK" && order.result_id) {
-    await supabase
-      .from("results")
-      .update({
-        is_unlocked: true,
-        access_type: "SINGLE_PURCHASE"
-      })
-      .eq("id", order.result_id);
-  }
+  await applyPaidOrderEntitlements({
+    supabase,
+    order: paidOrder,
+    now
+  });
 
   return {
-    ...order,
+    ...paidOrder,
     status: "PAID" as const
   };
 }

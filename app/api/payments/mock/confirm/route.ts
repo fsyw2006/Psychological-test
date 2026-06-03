@@ -42,12 +42,30 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Forbidden." }, { status: 403 });
   }
 
-  await activatePaidOrder({
-    orderNo: body.data.orderNo,
-    provider: body.data.provider,
-    transactionId: `mock_${Date.now()}`,
-    rawPayload: { mock: true }
-  });
+  try {
+    const paidOrder = await activatePaidOrder({
+      orderNo: body.data.orderNo,
+      provider: body.data.provider,
+      transactionId: `mock_${Date.now()}`,
+      rawPayload: { mock: true }
+    });
 
-  return NextResponse.json({ ok: true });
+    const redirectUrl =
+      paidOrder?.product_type === "REPORT_UNLOCK" && paidOrder.result_id
+        ? `/reports/${encodeURIComponent(paidOrder.result_id)}?unlocked=1`
+        : "/checkout/success";
+
+    return NextResponse.json({
+      ok: true,
+      order: paidOrder,
+      redirectUrl
+    });
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error: error instanceof Error ? error.message : "Payment confirmed but entitlement failed."
+      },
+      { status: 400 }
+    );
+  }
 }

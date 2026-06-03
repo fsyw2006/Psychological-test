@@ -14,6 +14,8 @@ type MockPayment = {
   provider: "WECHAT" | "ALIPAY";
 };
 
+type RealPayment = MockPayment;
+
 export function CheckoutPanel({
   plan,
   resultId,
@@ -29,6 +31,7 @@ export function CheckoutPanel({
   const [codeUrl, setCodeUrl] = useState("");
   const [qrDataUrl, setQrDataUrl] = useState("");
   const [mockPayment, setMockPayment] = useState<MockPayment | null>(null);
+  const [realPayment, setRealPayment] = useState<RealPayment | null>(null);
   const selectedPlan = plans.find((item) => item.slug === plan) || plans[0];
   const successUrl =
     plan === "single-report" && resultId
@@ -53,6 +56,7 @@ export function CheckoutPanel({
     setCodeUrl("");
     setQrDataUrl("");
     setMockPayment(null);
+    setRealPayment(null);
 
     const endpoint =
       provider === "wechat" ? "/api/payments/wechat/create" : "/api/payments/alipay/create";
@@ -91,6 +95,12 @@ export function CheckoutPanel({
     }
 
     if (data.payment?.codeUrl) {
+      if (data.order?.order_no && data.payment.provider) {
+        setRealPayment({
+          orderNo: data.order.order_no,
+          provider: data.payment.provider
+        });
+      }
       setCodeUrl(data.payment.codeUrl);
     }
   }
@@ -117,7 +127,37 @@ export function CheckoutPanel({
       return;
     }
 
-    window.location.replace(successUrl);
+    window.location.replace(data.redirectUrl || successUrl);
+  }
+
+  async function queryRealPayment() {
+    if (!realPayment) return;
+
+    setLoading(true);
+    setError("");
+    const response = await fetch(
+      `/api/payments/query?provider=${realPayment.provider.toLowerCase()}&orderNo=${encodeURIComponent(
+        realPayment.orderNo
+      )}`,
+      {
+        credentials: "include",
+        cache: "no-store"
+      }
+    );
+    const data = await response.json().catch(() => ({}));
+    setLoading(false);
+
+    if (!response.ok) {
+      setError(data.error || "支付状态查询失败");
+      return;
+    }
+
+    if (data.paid) {
+      window.location.replace(data.redirectUrl || successUrl);
+      return;
+    }
+
+    setError(data.providerState?.message || "暂未查询到支付成功，请完成支付后再试。");
   }
 
   return (
@@ -183,6 +223,11 @@ export function CheckoutPanel({
               <Button onClick={confirmMockPayment} disabled={loading} className="mt-4 w-full">
                 {loading ? <Loader2 className="animate-spin" /> : <CreditCard />}
                 我已支付
+              </Button>
+            ) : realPayment ? (
+              <Button onClick={queryRealPayment} disabled={loading} className="mt-4 w-full">
+                {loading ? <Loader2 className="animate-spin" /> : <CreditCard />}
+                查询支付状态
               </Button>
             ) : null}
           </div>
