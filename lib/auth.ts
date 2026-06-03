@@ -13,9 +13,7 @@ export type AppProfile = {
   avatar_url?: string | null;
   role: "USER" | "ADMIN";
 };
-
 export async function getCurrentProfile() {
- export async function getCurrentProfile() {
   try {
     if (!hasSupabaseEnv()) return null;
 
