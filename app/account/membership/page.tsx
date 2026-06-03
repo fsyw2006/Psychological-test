@@ -7,6 +7,9 @@ import { hasServiceRoleEnv } from "@/lib/env";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { formatDate } from "@/lib/utils";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export default async function MyMembershipPage() {
   const profile = await getCurrentProfile();
   let membership: any = null;
