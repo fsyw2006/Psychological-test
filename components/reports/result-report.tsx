@@ -54,7 +54,10 @@ export function ResultReport({
   useEffect(() => {
     if (initialResult) return;
     let mounted = true;
-    fetch(`/api/results/${resultId}`)
+    fetch(`/api/results/${resultId}`, {
+      credentials: "include",
+      cache: "no-store"
+    })
       .then(async (response) => {
         if (!response.ok) throw new Error("not found");
         return response.json();
