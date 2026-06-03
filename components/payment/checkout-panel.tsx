@@ -30,6 +30,10 @@ export function CheckoutPanel({
   const [qrDataUrl, setQrDataUrl] = useState("");
   const [mockPayment, setMockPayment] = useState<MockPayment | null>(null);
   const selectedPlan = plans.find((item) => item.slug === plan) || plans[0];
+  const successUrl =
+    plan === "single-report" && resultId
+      ? `/reports/${encodeURIComponent(resultId)}?unlocked=1`
+      : "/checkout/success";
 
   useEffect(() => {
     if (!codeUrl) return;
@@ -57,6 +61,8 @@ export function CheckoutPanel({
       headers: {
         "Content-Type": "application/json"
       },
+      credentials: "include",
+      cache: "no-store",
       body: JSON.stringify({
         plan,
         resultId
@@ -99,6 +105,8 @@ export function CheckoutPanel({
       headers: {
         "Content-Type": "application/json"
       },
+      credentials: "include",
+      cache: "no-store",
       body: JSON.stringify(mockPayment)
     });
     const data = await response.json().catch(() => ({}));
@@ -109,7 +117,7 @@ export function CheckoutPanel({
       return;
     }
 
-    window.location.href = "/checkout/success";
+    window.location.replace(successUrl);
   }
 
   return (
