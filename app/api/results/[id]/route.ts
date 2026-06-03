@@ -4,6 +4,18 @@ import { hasServiceRoleEnv } from "@/lib/env";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { safeJson } from "@/lib/utils";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
+function noStoreJson(body: unknown, status = 200) {
+  return NextResponse.json(body, {
+    status,
+    headers: {
+      "Cache-Control": "no-store"
+    }
+  });
+}
+
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -12,7 +24,7 @@ export async function GET(
   const profile = await getCurrentProfile();
 
   if (!hasServiceRoleEnv() || !profile) {
-    return NextResponse.json({ error: "报告不存在" }, { status: 404 });
+    return noStoreJson({ error: "报告不存在" }, 404);
   }
 
   const supabase = createSupabaseServiceClient();
@@ -23,14 +35,14 @@ export async function GET(
     .single();
 
   if (error || !data) {
-    return NextResponse.json({ error: "报告不存在" }, { status: 404 });
+    return noStoreJson({ error: "报告不存在" }, 404);
   }
 
   if (data.user_id !== profile.id && profile.role !== "ADMIN") {
-    return NextResponse.json({ error: "无权访问该报告" }, { status: 403 });
+    return noStoreJson({ error: "无权访问该报告" }, 403);
   }
 
-  return NextResponse.json({
+  return noStoreJson({
     result: {
       id: data.id,
       testSlug: data.tests?.slug,
