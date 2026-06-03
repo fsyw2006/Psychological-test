@@ -30,78 +30,102 @@ async function seedSystemConfigs(supabase: ReturnType<typeof createSupabaseServi
   const safetyPrompt =
     "你不是医生，也不能诊断疾病。你只能提供情绪支持、自我觉察建议和心理健康科普。如用户表达自伤或伤害他人风险，应建议立即联系当地急救电话、专业机构或可信赖的人。";
 
-  await supabase.from("system_configs").upsert(
-    [
-      {
-        key: "pricing_plans",
-        value: {
-          plans: membershipPlans,
-          dailyFreeTests: 1
-        },
-        description: "会员套餐与单次解锁定价"
-      },
-      {
-        key: "ai_settings",
-        value: {
-          aiChatEnabled: false,
-          aiProvider: "mock",
-          aiModel: "mock-companion",
-          aiApiKey: "",
-          aiSystemPrompt: safetyPrompt,
-          freeChatLimit: 3,
-          memberChatLimit: 50
-        },
-        description: "AI 聊天隐藏功能配置"
-      },
-      {
-        key: "payment_channels",
-        value: {
-          wechat: {
-            enabled: false,
-            appid: "",
-            mchid: "",
-            apiV3Key: "",
-            serialNo: "",
-            privateKey: "",
-            platformPublicKey: "",
-            notifyUrl: ""
-          },
-          alipay: {
-            enabled: false,
-            appId: "",
-            privateKey: "",
-            publicKey: "",
-            notifyUrl: "",
-            returnUrl: "",
-            gateway: "https://openapi.alipay.com/gateway.do"
-          }
-        },
-        description: "后台收款通道配置"
-      }
-    ],
+  const systemConfigDefaults = [
     {
-      onConflict: "key"
+      key: "pricing_plans",
+      value: {
+        plans: membershipPlans,
+        dailyFreeTests: 1
+      },
+      description: "会员套餐与单次解锁定价"
+    },
+    {
+      key: "ai_settings",
+      value: {
+        aiChatEnabled: false,
+        aiProvider: "mock",
+        aiModel: "mock-companion",
+        aiApiKey: "",
+        aiSystemPrompt: safetyPrompt,
+        freeChatLimit: 3,
+        memberChatLimit: 50
+      },
+      description: "AI 聊天隐藏功能配置"
+    },
+    {
+      key: "payment_channels",
+      value: {
+        wechat: {
+          enabled: false,
+          appid: "",
+          mchid: "",
+          apiV3Key: "",
+          serialNo: "",
+          privateKey: "",
+          platformPublicKey: "",
+          notifyUrl: ""
+        },
+        alipay: {
+          enabled: false,
+          appId: "",
+          privateKey: "",
+          publicKey: "",
+          notifyUrl: "",
+          returnUrl: "",
+          gateway: "https://openapi.alipay.com/gateway.do"
+        }
+      },
+      description: "后台收款通道配置"
     }
+  ];
+
+  const { data: existingSystemConfigs } = await supabase
+    .from("system_configs")
+    .select("key")
+    .in(
+      "key",
+      systemConfigDefaults.map((item) => item.key)
+    );
+  const existingSystemKeys = new Set((existingSystemConfigs || []).map((item) => item.key));
+  const missingSystemConfigs = systemConfigDefaults.filter(
+    (item) => !existingSystemKeys.has(item.key)
   );
 
-  await supabase.from("admin_configs").upsert(
+  if (missingSystemConfigs.length) {
+    await supabase.from("system_configs").insert(missingSystemConfigs);
+  }
+
+  const adminConfigDefaults = (
     [
-      ["aiChatEnabled", false],
-      ["aiProvider", "mock"],
-      ["aiModel", "mock-companion"],
-      ["aiApiKey", ""],
-      ["aiSystemPrompt", safetyPrompt],
-      ["freeChatLimit", 3],
-      ["memberChatLimit", 50]
-    ].map(([key, value]) => ({
-      key,
-      value,
-      description: "AI 聊天预留配置"
-    })),
-    {
-      onConflict: "key"
-    }
+    ["aiChatEnabled", false],
+    ["aiProvider", "mock"],
+    ["aiModel", "mock-companion"],
+    ["aiApiKey", ""],
+    ["aiSystemPrompt", safetyPrompt],
+    ["freeChatLimit", 3],
+    ["memberChatLimit", 50]
+    ] satisfies Array<[string, string | number | boolean]>
+  ).map(([key, value]) => ({
+    key,
+    value,
+    description: "AI 聊天预留配置"
+  }));
+
+  const { data: existingAdminConfigs } = await supabase
+    .from("admin_configs")
+    .select("key")
+    .in(
+      "key",
+      adminConfigDefaults.map((item) => item.key)
+    );
+  const existingAdminKeys = new Set((existingAdminConfigs || []).map((item) => item.key));
+  const missingAdminConfigs = adminConfigDefaults.filter(
+    (item) => !existingAdminKeys.has(item.key)
   );
+
+  if (missingAdminConfigs.length) {
+    await supabase.from("admin_configs").insert(missingAdminConfigs);
+  }
 }
 
 async function seedPlans(supabase: ReturnType<typeof createSupabaseServiceClient>) {

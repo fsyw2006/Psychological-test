@@ -10,6 +10,9 @@ import { Button } from "@/components/ui/button";
 import { getArticles, getAssessmentCatalog, getCategories } from "@/lib/content";
 import { getMembershipPlans } from "@/lib/pricing";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export default async function HomePage() {
   const [tests, categories, articles, plans] = await Promise.all([
     getAssessmentCatalog(),

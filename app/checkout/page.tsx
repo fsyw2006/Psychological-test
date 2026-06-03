@@ -8,6 +8,9 @@ export const metadata: Metadata = {
   description: "微信支付与支付宝支付收银台。"
 };
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export default async function CheckoutPage({
   searchParams
 }: {

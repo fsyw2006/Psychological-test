@@ -7,6 +7,9 @@ export const metadata: Metadata = {
   description: "开通月会员、年会员，或单次解锁当前心理测评报告。"
 };
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export default async function MembershipPage() {
   const plans = await getMembershipPlans();
 

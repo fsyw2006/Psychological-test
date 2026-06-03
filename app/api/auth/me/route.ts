@@ -9,7 +9,15 @@ export async function GET() {
 
   return NextResponse.json(
     {
-      user: profile ? { email: profile.email, name: profile.name } : null
+      user: profile
+        ? {
+            id: profile.id,
+            authUserId: profile.auth_user_id,
+            email: profile.email,
+            name: profile.name,
+            role: profile.role
+          }
+        : null
     },
     {
       headers: {
