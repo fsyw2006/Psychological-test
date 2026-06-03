@@ -30,7 +30,10 @@ export async function POST(request: NextRequest) {
   }
 
   if (!hasServiceRoleEnv()) {
-    return NextResponse.json({ ok: true, demo: true });
+    return NextResponse.json(
+      { error: "支付服务未完成配置：缺少 SUPABASE_SERVICE_ROLE_KEY。" },
+      { status: 500 }
+    );
   }
 
   const order = await getOrderByNo(body.data.orderNo);

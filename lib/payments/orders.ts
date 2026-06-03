@@ -42,17 +42,7 @@ export async function createCheckoutOrder({
   }
 
   if (!hasServiceRoleEnv()) {
-    return {
-      id: `demo_${nanoid(8)}`,
-      order_no: createOrderNo(),
-      user_id: profile.id,
-      result_id: resultId || null,
-      product_type: product.productType,
-      product_name: product.productName,
-      amount_cents: product.amountCents,
-      currency: "CNY",
-      status: "PENDING"
-    } satisfies OrderRecord;
+    throw new Error("支付服务未完成配置：缺少 SUPABASE_SERVICE_ROLE_KEY。");
   }
 
   const supabase = createSupabaseServiceClient();
@@ -102,7 +92,9 @@ export async function createCheckoutOrder({
 }
 
 export async function getOrderByNo(orderNo: string) {
-  if (!hasServiceRoleEnv()) return null;
+  if (!hasServiceRoleEnv()) {
+    throw new Error("支付服务未完成配置：缺少 SUPABASE_SERVICE_ROLE_KEY。");
+  }
   const supabase = createSupabaseServiceClient();
   const { data } = await supabase
     .from("orders")
@@ -122,11 +114,7 @@ export async function ensurePaymentRecord({
   providerOrderId?: string;
 }) {
   if (!hasServiceRoleEnv()) {
-    return {
-      id: `demo_pay_${nanoid(8)}`,
-      provider,
-      status: "PENDING"
-    };
+    throw new Error("支付服务未完成配置：缺少 SUPABASE_SERVICE_ROLE_KEY。");
   }
 
   const supabase = createSupabaseServiceClient();
@@ -217,7 +205,9 @@ export async function activatePaidOrder({
   transactionId?: string;
   rawPayload?: unknown;
 }) {
-  if (!hasServiceRoleEnv()) return null;
+  if (!hasServiceRoleEnv()) {
+    throw new Error("支付服务未完成配置：缺少 SUPABASE_SERVICE_ROLE_KEY。");
+  }
 
   const supabase = createSupabaseServiceClient();
   const order = await getOrderByNo(orderNo);
