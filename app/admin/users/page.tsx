@@ -6,6 +6,9 @@ import { hasServiceRoleEnv, hasSupabaseEnv } from "@/lib/env";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { formatDate } from "@/lib/utils";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export default async function AdminUsersPage() {
   const profile = await getCurrentProfile();
   if (hasSupabaseEnv() && profile?.role !== "ADMIN") redirect("/account");

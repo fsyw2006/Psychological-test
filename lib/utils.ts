@@ -13,12 +13,21 @@ export function formatCurrency(amountCents: number) {
   }).format(amountCents / 100);
 }
 
-export function formatDate(date: string | Date) {
-  return new Intl.DateTimeFormat("zh-CN", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit"
-  }).format(new Date(date));
+export function formatDate(date: string | Date | null | undefined) {
+  if (!date) return "最近";
+
+  const value = new Date(date);
+  if (Number.isNaN(value.getTime())) return "最近";
+
+  try {
+    return new Intl.DateTimeFormat("zh-CN", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    }).format(value);
+  } catch {
+    return value.toISOString().slice(0, 10);
+  }
 }
 
 export function absoluteUrl(path = "") {

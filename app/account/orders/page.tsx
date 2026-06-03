@@ -13,13 +13,17 @@ export default async function MyOrdersPage() {
   let rows: any[] = [];
 
   if (profile && hasServiceRoleEnv()) {
-    const supabase = createSupabaseServiceClient();
-    const { data } = await supabase
-      .from("orders")
-      .select("*")
-      .eq("user_id", profile.id)
-      .order("created_at", { ascending: false });
-    rows = data || [];
+    try {
+      const supabase = createSupabaseServiceClient();
+      const { data } = await supabase
+        .from("orders")
+        .select("*")
+        .eq("user_id", profile.id)
+        .order("created_at", { ascending: false });
+      rows = data || [];
+    } catch (error) {
+      console.error("Failed to load account orders", error);
+    }
   }
 
   return (

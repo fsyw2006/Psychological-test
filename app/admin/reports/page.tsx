@@ -4,6 +4,9 @@ import { getCurrentProfile } from "@/lib/auth";
 import { getAssessmentCatalog } from "@/lib/content";
 import { hasSupabaseEnv } from "@/lib/env";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export default async function AdminReportsPage() {
   const profile = await getCurrentProfile();
   if (hasSupabaseEnv() && profile?.role !== "ADMIN") redirect("/account");

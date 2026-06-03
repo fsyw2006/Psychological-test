@@ -5,6 +5,9 @@ import { assessments } from "@/lib/demo-data";
 import { hasServiceRoleEnv, hasSupabaseEnv } from "@/lib/env";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 async function getStats(): Promise<AdminStats> {
   if (!hasServiceRoleEnv()) {
     return {

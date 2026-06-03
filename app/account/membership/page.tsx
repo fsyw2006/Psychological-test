@@ -15,16 +15,20 @@ export default async function MyMembershipPage() {
   let membership: any = null;
 
   if (profile && hasServiceRoleEnv()) {
-    const supabase = createSupabaseServiceClient();
-    const { data } = await supabase
-      .from("memberships")
-      .select("*")
-      .eq("user_id", profile.id)
-      .eq("status", "ACTIVE")
-      .order("ends_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    membership = data;
+    try {
+      const supabase = createSupabaseServiceClient();
+      const { data } = await supabase
+        .from("memberships")
+        .select("*")
+        .eq("user_id", profile.id)
+        .eq("status", "ACTIVE")
+        .order("ends_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      membership = data;
+    } catch (error) {
+      console.error("Failed to load account membership", error);
+    }
   }
 
   return (

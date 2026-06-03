@@ -3,6 +3,9 @@ import { PaymentChannelPanel } from "@/components/admin/payment-channel-panel";
 import { getCurrentProfile } from "@/lib/auth";
 import { hasSupabaseEnv } from "@/lib/env";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export default async function AdminPaymentsPage() {
   const profile = await getCurrentProfile();
   if (hasSupabaseEnv() && profile?.role !== "ADMIN") redirect("/account");

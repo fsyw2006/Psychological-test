@@ -4,6 +4,9 @@ import { getCurrentProfile } from "@/lib/auth";
 import { getAiSettings, maskAiKey } from "@/lib/ai-settings";
 import { hasServiceRoleEnv, hasSupabaseEnv } from "@/lib/env";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export default async function AdminSettingsPage() {
   const profile = await getCurrentProfile();
   if (hasSupabaseEnv() && profile?.role !== "ADMIN") redirect("/account");

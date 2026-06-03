@@ -16,13 +16,17 @@ export default async function MyReportsPage() {
   let rows: any[] = [];
 
   if (profile && hasServiceRoleEnv()) {
-    const supabase = createSupabaseServiceClient();
-    const { data } = await supabase
-      .from("results")
-      .select("id,created_at,type,is_unlocked,score,max_score,tests(title,slug)")
-      .eq("user_id", profile.id)
-      .order("created_at", { ascending: false });
-    rows = data || [];
+    try {
+      const supabase = createSupabaseServiceClient();
+      const { data } = await supabase
+        .from("results")
+        .select("id,created_at,type,is_unlocked,score,max_score,tests(title,slug)")
+        .eq("user_id", profile.id)
+        .order("created_at", { ascending: false });
+      rows = data || [];
+    } catch (error) {
+      console.error("Failed to load account reports", error);
+    }
   }
 
   return (

@@ -4,6 +4,9 @@ import { getCurrentProfile } from "@/lib/auth";
 import { hasServiceRoleEnv, hasSupabaseEnv } from "@/lib/env";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export default async function AdminMembershipsPage() {
   const profile = await getCurrentProfile();
   if (hasSupabaseEnv() && profile?.role !== "ADMIN") redirect("/account");
