@@ -8,6 +8,28 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
+function getFriendlyAuthError(error?: string) {
+  const message = (error || "").toLowerCase();
+
+  if (message.includes("email rate limit")) {
+    return "邮件发送太频繁了。Supabase 免费内置邮件服务额度较低，请稍后再试，或在 Supabase 配置自定义 SMTP 邮箱服务。";
+  }
+
+  if (message.includes("already registered") || message.includes("already exists")) {
+    return "这个邮箱已经注册过了，请直接登录，或换一个邮箱测试。";
+  }
+
+  if (message.includes("password")) {
+    return "密码不符合要求，请使用至少 8 位字符，建议包含字母和数字。";
+  }
+
+  if (message.includes("invalid email")) {
+    return "邮箱格式不正确，请检查后再试。";
+  }
+
+  return error || "操作失败，请稍后再试。";
+}
+
 export function AuthForm({ mode }: { mode: "login" | "register" }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -23,30 +45,35 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
     setLoading(true);
     setMessage("");
 
-    const response = await fetch(`/api/auth/${mode === "login" ? "login" : "register"}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password, name, next })
-    });
-    const result = (await response.json().catch(() => null)) as {
-      error?: string;
-      needsEmailConfirmation?: boolean;
-    } | null;
+    try {
+      const response = await fetch(`/api/auth/${mode === "login" ? "login" : "register"}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password, name, next })
+      });
 
-    setLoading(false);
+      const result = (await response.json().catch(() => null)) as {
+        error?: string;
+        needsEmailConfirmation?: boolean;
+      } | null;
 
-    if (!response.ok || result?.error) {
-      setMessage(result?.error || "登录失败，请稍后再试。");
-      return;
+      if (!response.ok || result?.error) {
+        setMessage(getFriendlyAuthError(result?.error));
+        return;
+      }
+
+      if (mode === "register" && result?.needsEmailConfirmation) {
+        setMessage("注册邮件已发送，请打开邮箱完成确认。");
+        return;
+      }
+
+      router.refresh();
+      router.push(next);
+    } catch {
+      setMessage("网络请求失败，请刷新页面后再试。");
+    } finally {
+      setLoading(false);
     }
-
-    if (mode === "register" && result?.needsEmailConfirmation) {
-      setMessage("注册邮件已发送，请完成邮箱确认。");
-      return;
-    }
-
-    router.refresh();
-    router.push(next);
   }
 
   return (
@@ -66,6 +93,7 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
             <Input id="name" value={name} onChange={(event) => setName(event.target.value)} />
           </div>
         ) : null}
+
         <div className="space-y-2">
           <Label htmlFor="email">邮箱</Label>
           <Input
@@ -76,6 +104,7 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
             required
           />
         </div>
+
         <div className="space-y-2">
           <Label htmlFor="password">密码</Label>
           <Input
