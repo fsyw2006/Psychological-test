@@ -15,50 +15,55 @@ export type AppProfile = {
 };
 
 export async function getCurrentProfile() {
-  if (!hasSupabaseEnv()) return null;
+ export async function getCurrentProfile() {
+  try {
+    if (!hasSupabaseEnv()) return null;
 
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-    error
-  } = await supabase.auth.getUser();
+    const supabase = await createSupabaseServerClient();
+    const {
+      data: { user },
+      error
+    } = await supabase.auth.getUser();
 
-  if (error || !user?.email) return null;
+    if (error || !user?.email) return null;
 
-  if (!hasServiceRoleEnv()) {
-    return {
-      id: user.id,
-      auth_user_id: user.id,
-      email: user.email,
-      name: user.user_metadata?.name || user.email.split("@")[0],
-      avatar_url: user.user_metadata?.avatar_url || null,
-      role: getAdminEmails().includes(user.email.toLowerCase()) ? "ADMIN" : "USER"
-    } satisfies AppProfile;
-  }
-
-  const service = createSupabaseServiceClient();
-  const role = getAdminEmails().includes(user.email.toLowerCase()) ? "ADMIN" : "USER";
-  const { data: profile, error: profileError } = await service
-    .from("users")
-    .upsert(
-      {
+    if (!hasServiceRoleEnv()) {
+      return {
+        id: user.id,
         auth_user_id: user.id,
         email: user.email,
         name: user.user_metadata?.name || user.email.split("@")[0],
         avatar_url: user.user_metadata?.avatar_url || null,
-        role
-      },
-      {
-        onConflict: "auth_user_id"
-      }
-    )
-    .select("id, auth_user_id, email, name, avatar_url, role")
-    .single();
+        role: getAdminEmails().includes(user.email.toLowerCase()) ? "ADMIN" : "USER"
+      } satisfies AppProfile;
+    }
 
-  if (profileError || !profile) return null;
-  return profile as AppProfile;
-}
+    const service = createSupabaseServiceClient();
+    const role = getAdminEmails().includes(user.email.toLowerCase()) ? "ADMIN" : "USER";
+    const { data: profile, error: profileError } = await service
+      .from("users")
+      .upsert(
+        {
+          auth_user_id: user.id,
+          email: user.email,
+          name: user.user_metadata?.name || user.email.split("@")[0],
+          avatar_url: user.user_metadata?.avatar_url || null,
+          role
+        },
+        {
+          onConflict: "auth_user_id"
+        }
+      )
+      .select("id, auth_user_id, email, name, avatar_url, role")
+      .single();
 
+    if (profileError || !profile) return null;
+    return profile as AppProfile;
+  } catch (error) {
+    console.error("Failed to read current Supabase profile", error);
+    return null;
+  }
+}  
 export async function requireProfile() {
   const profile = await getCurrentProfile();
   if (!profile) redirect("/auth/login");
