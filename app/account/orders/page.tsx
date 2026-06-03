@@ -5,6 +5,9 @@ import { hasServiceRoleEnv } from "@/lib/env";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { formatCurrency, formatDate } from "@/lib/utils";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export default async function MyOrdersPage() {
   const profile = await getCurrentProfile();
   let rows: any[] = [];
