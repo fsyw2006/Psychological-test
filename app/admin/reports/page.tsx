@@ -18,7 +18,7 @@ export default async function AdminReportsPage() {
       <div>
         <h2 className="text-2xl font-semibold">报告模板管理</h2>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">
-          高级报告全部来自数据库预设模板。这里可以按测评和结果类型编辑模板内容，不调用 AI。
+          固定模板用于兜底和稳定展示。开启“报告模板 AI 辅助”并配置真实模型后，会员提交测评时会优先生成 AI 个性化高级报告。
         </p>
       </div>
       <ReportTemplateAdmin

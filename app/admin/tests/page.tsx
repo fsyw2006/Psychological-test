@@ -17,7 +17,7 @@ export default async function AdminTestsPage() {
       <div>
         <h2 className="text-2xl font-semibold">测评管理</h2>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">
-          仅前台展示适合小红书传播的 15 个轻量测评；后台可调整启用状态、分类、标签和预计时间。
+          用户前台做的是正式题库，保证评分稳定。后台可以用 AI 生成题目草稿，管理员检查后再保存为正式题目。
         </p>
       </div>
       <TestManagementPanel tests={tests} categories={categories} />

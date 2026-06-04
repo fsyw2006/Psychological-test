@@ -1,12 +1,15 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { getCurrentProfile } from "@/lib/auth";
+import { getAiSettings } from "@/lib/ai-settings";
+import { generatePersonalizedReport } from "@/lib/ai-report";
 import { getAssessmentBySlug } from "@/lib/content";
 import { hasServiceRoleEnv, hasSupabaseEnv } from "@/lib/env";
 import { rateLimited } from "@/lib/security";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { scoreAssessment, validateAnswers } from "@/lib/scoring";
 import { getPricingConfig } from "@/lib/pricing";
+import type { AssessmentResult } from "@/lib/types";
 
 const submitSchema = z.object({
   testSlug: z.string().min(1),
@@ -101,6 +104,41 @@ export async function POST(request: NextRequest) {
   }
 
   const result = scoreAssessment(test, body.data.answers, hasMembership);
+  const advanced = {
+    ...result.advanced,
+    source: "template" as const,
+    generatedByAi: false
+  };
+  let finalResult: AssessmentResult = {
+    ...result,
+    advanced,
+    advancedSource: "template"
+  };
+
+  if (hasMembership) {
+    try {
+      const settings = await getAiSettings();
+      const aiAdvanced = await generatePersonalizedReport({
+        settings,
+        test,
+        answers: body.data.answers,
+        result
+      });
+
+      if (aiAdvanced) {
+        finalResult = {
+          ...result,
+          title: aiAdvanced.title,
+          summary: aiAdvanced.summary,
+          advanced: aiAdvanced,
+          advancedSource: "ai"
+        };
+      }
+    } catch (error) {
+      console.error("Failed to generate personalized AI report.", error);
+    }
+  }
+
   const { data: testRow, error: testError } = await supabase
     .from("tests")
     .select("id,completion_count")
@@ -116,12 +154,12 @@ export async function POST(request: NextRequest) {
     .insert({
       user_id: profile.id,
       test_id: testRow.id,
-      score: result.score,
-      max_score: result.maxScore,
-      type: result.type,
-      summary: result.summary,
-      dimensions: result.dimensions,
-      advanced_report: result.advanced,
+      score: finalResult.score,
+      max_score: finalResult.maxScore,
+      type: finalResult.type,
+      summary: finalResult.summary,
+      dimensions: finalResult.dimensions,
+      advanced_report: finalResult.advanced,
       is_unlocked: hasMembership,
       access_type: hasMembership ? "MEMBERSHIP" : "FREE"
     })
@@ -173,7 +211,7 @@ export async function POST(request: NextRequest) {
 
   return NextResponse.json({
     result: {
-      ...result,
+      ...finalResult,
       id: savedResult.id,
       isUnlocked: hasMembership,
       createdAt: savedResult.created_at

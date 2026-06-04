@@ -34,6 +34,9 @@ export type ReportTemplate = {
   growth: string[];
   careers: string[];
   relationships: string[];
+  source?: "template" | "ai";
+  generatedByAi?: boolean;
+  generatedAt?: string;
 };
 
 export type Assessment = {
@@ -79,6 +82,7 @@ export type AssessmentResult = {
   summary: string;
   dimensions: Record<string, number>;
   advanced: ReportTemplate;
+  advancedSource?: "template" | "ai";
   isUnlocked: boolean;
   createdAt: string;
 };

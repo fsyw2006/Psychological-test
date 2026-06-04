@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getCurrentProfile } from "@/lib/auth";
+import { reportAdvancedSource } from "@/lib/ai-report";
 import { hasServiceRoleEnv } from "@/lib/env";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { safeJson } from "@/lib/utils";
@@ -78,6 +79,8 @@ export async function GET(
         .eq("id", id);
     }
   }
+  const advanced = safeJson(data.advanced_report, {});
+
   return noStoreJson({
     result: {
       id: data.id,
@@ -90,7 +93,8 @@ export async function GET(
       title: safeJson(data.advanced_report, { title: "高级报告" }).title,
       summary: data.summary,
       dimensions: safeJson(data.dimensions, {}),
-      advanced: safeJson(data.advanced_report, {}),
+      advanced,
+      advancedSource: reportAdvancedSource(advanced),
       isUnlocked,
       createdAt: data.created_at
     }

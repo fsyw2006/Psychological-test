@@ -149,7 +149,16 @@ export function ResultReport({
             <CardHeader>
               <div className="flex items-center justify-between gap-3">
                 <CardTitle>高级分析</CardTitle>
-                {result.isUnlocked ? <Badge variant="soft">已解锁</Badge> : <Badge variant="outline">会员解锁</Badge>}
+                <div className="flex flex-wrap justify-end gap-2">
+                  {result.isUnlocked ? (
+                    <Badge variant="soft">已解锁</Badge>
+                  ) : (
+                    <Badge variant="outline">会员解锁</Badge>
+                  )}
+                  <Badge variant={result.advancedSource === "ai" ? "soft" : "outline"}>
+                    {result.advancedSource === "ai" ? "AI 个性化" : "模板报告"}
+                  </Badge>
+                </div>
               </div>
             </CardHeader>
             <CardContent>
