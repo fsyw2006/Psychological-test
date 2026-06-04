@@ -822,6 +822,14 @@ export const membershipPlans: MembershipPlan[] = [
     highlighted: true
   },
   {
+    slug: "quarterly",
+    name: "季会员",
+    priceCents: 2380,
+    period: "每季",
+    description: "适合连续 3 个月使用心理测评与高级报告。",
+    features: ["3 个月会员权益", "无限测评", "高级报告", "历史记录"]
+  },
+  {
     slug: "yearly",
     name: "年会员",
     priceCents: 16800,

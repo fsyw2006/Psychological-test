@@ -101,6 +101,7 @@ export function MembershipAdminPanel({
                 className="focus-ring h-11 w-full rounded-md border border-input bg-background/70 px-3 text-sm"
               >
                 <option value="MONTHLY">月会员</option>
+                <option value="QUARTERLY">季会员</option>
                 <option value="YEARLY">年会员</option>
               </select>
             </div>

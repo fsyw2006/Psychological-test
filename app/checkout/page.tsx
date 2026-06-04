@@ -23,7 +23,7 @@ export default async function CheckoutPage({
   searchParams: Promise<{ plan?: PlanSlug; resultId?: string; provider?: PaymentProvider }>;
 }) {
   const { plan = "monthly", resultId, provider } = await searchParams;
-  const safePlan: PlanSlug = ["monthly", "yearly", "single-report"].includes(plan)
+  const safePlan: PlanSlug = ["monthly", "quarterly", "yearly", "single-report"].includes(plan)
     ? plan
     : "monthly";
   const safeProvider: PaymentProvider | undefined =

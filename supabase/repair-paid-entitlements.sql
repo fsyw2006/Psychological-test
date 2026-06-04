@@ -25,6 +25,7 @@ select
   o.user_id,
   case
     when o.product_type = 'MEMBERSHIP_MONTHLY'::"ProductType" then 'MONTHLY'::"MembershipPlan"
+    when o.product_type = 'MEMBERSHIP_QUARTERLY'::"ProductType" then 'QUARTERLY'::"MembershipPlan"
     else 'YEARLY'::"MembershipPlan"
   end as plan,
   'ACTIVE'::"MembershipStatus" as status,
@@ -32,6 +33,8 @@ select
   case
     when o.product_type = 'MEMBERSHIP_MONTHLY'::"ProductType"
       then coalesce(o.paid_at, o.created_at, now()) + interval '1 month'
+    when o.product_type = 'MEMBERSHIP_QUARTERLY'::"ProductType"
+      then coalesce(o.paid_at, o.created_at, now()) + interval '3 months'
     else coalesce(o.paid_at, o.created_at, now()) + interval '1 year'
   end as ends_at,
   o.id as order_id
@@ -40,6 +43,7 @@ where
   o.status = 'PAID'::"OrderStatus"
   and o.product_type in (
     'MEMBERSHIP_MONTHLY'::"ProductType",
+    'MEMBERSHIP_QUARTERLY'::"ProductType",
     'MEMBERSHIP_YEARLY'::"ProductType"
   )
   and not exists (

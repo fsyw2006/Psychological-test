@@ -4,7 +4,7 @@ import { getMembershipPlans } from "@/lib/pricing";
 
 export const metadata: Metadata = {
   title: "会员中心",
-  description: "开通月会员、年会员，或单次解锁当前心理测评报告。"
+  description: "开通月会员、季会员、年会员，或单次解锁当前心理测评报告。"
 };
 
 export const dynamic = "force-dynamic";

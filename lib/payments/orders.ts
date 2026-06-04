@@ -247,7 +247,11 @@ async function applyPaidOrderEntitlements({
   order: OrderRecord;
   now: Date;
 }) {
-  if (order.product_type === "MEMBERSHIP_MONTHLY" || order.product_type === "MEMBERSHIP_YEARLY") {
+  if (
+    order.product_type === "MEMBERSHIP_MONTHLY" ||
+    order.product_type === "MEMBERSHIP_QUARTERLY" ||
+    order.product_type === "MEMBERSHIP_YEARLY"
+  ) {
     const { data: existingMembership } = await supabase
       .from("memberships")
       .select("id,status")
@@ -267,6 +271,7 @@ async function applyPaidOrderEntitlements({
     }
 
     const isMonthly = order.product_type === "MEMBERSHIP_MONTHLY";
+    const isQuarterly = order.product_type === "MEMBERSHIP_QUARTERLY";
     const { data: currentMembership } = await supabase
       .from("memberships")
       .select("id,ends_at")
@@ -287,13 +292,17 @@ async function applyPaidOrderEntitlements({
       : null;
     const baseDate =
       currentEndsAt && currentEndsAt.getTime() > now.getTime() ? currentEndsAt : now;
-    const endsAt = isMonthly ? addMonths(baseDate, 1) : addYears(baseDate, 1);
+    const endsAt = isMonthly
+      ? addMonths(baseDate, 1)
+      : isQuarterly
+        ? addMonths(baseDate, 3)
+        : addYears(baseDate, 1);
 
     const { data: newMembership, error } = await supabase
       .from("memberships")
       .insert({
         user_id: order.user_id,
-        plan: isMonthly ? "MONTHLY" : "YEARLY",
+        plan: isMonthly ? "MONTHLY" : isQuarterly ? "QUARTERLY" : "YEARLY",
         status: "ACTIVE",
         starts_at: now.toISOString(),
         ends_at: endsAt.toISOString(),

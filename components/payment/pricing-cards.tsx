@@ -20,7 +20,7 @@ function planActionLabel(slug: string) {
 
 export function PricingCards({ plans }: { plans: MembershipPlan[] }) {
   return (
-    <div className="grid gap-4 lg:grid-cols-4">
+    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
       {plans.map((plan) => (
         <Card
           key={plan.slug}

@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 const orderSchema = z.object({
-  plan: z.enum(["monthly", "yearly", "single-report"]),
+  plan: z.enum(["monthly", "quarterly", "yearly", "single-report"]),
   resultId: z.string().optional().nullable()
 });
 

@@ -16,7 +16,7 @@ import {
 import { rateLimited } from "@/lib/security";
 
 const schema = z.object({
-  plan: z.enum(["monthly", "yearly", "single-report"]),
+  plan: z.enum(["monthly", "quarterly", "yearly", "single-report"]),
   resultId: z.string().optional().nullable()
 });
 

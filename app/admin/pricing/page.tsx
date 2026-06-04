@@ -18,7 +18,7 @@ export default async function AdminPricingPage() {
       <div>
         <h2 className="text-2xl font-semibold">定价管理</h2>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">
-          修改免费权益、单次解锁、月会员和年会员价格。保存后前台价格和订单金额同步生效。
+          修改免费权益、单次解锁、月会员、季会员和年会员价格。保存后前台价格和订单金额同步生效。
         </p>
       </div>
       <PricingAdminForm

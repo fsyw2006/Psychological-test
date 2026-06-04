@@ -106,7 +106,7 @@ export type Article = {
   content: string;
 };
 
-export type PlanSlug = "free" | "monthly" | "yearly" | "single-report";
+export type PlanSlug = "free" | "monthly" | "quarterly" | "yearly" | "single-report";
 
 export type MembershipPlan = {
   slug: PlanSlug;

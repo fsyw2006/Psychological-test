@@ -2,7 +2,11 @@ import { getPlanBySlug } from "@/lib/pricing";
 import type { PlanSlug } from "@/lib/types";
 
 export type CheckoutProduct = {
-  productType: "MEMBERSHIP_MONTHLY" | "MEMBERSHIP_YEARLY" | "REPORT_UNLOCK";
+  productType:
+    | "MEMBERSHIP_MONTHLY"
+    | "MEMBERSHIP_QUARTERLY"
+    | "MEMBERSHIP_YEARLY"
+    | "REPORT_UNLOCK";
   productName: string;
   amountCents: number;
   plan: PlanSlug;
@@ -18,6 +22,15 @@ export async function productForPlan(plan: PlanSlug): Promise<CheckoutProduct> {
   if (plan === "monthly") {
     return {
       productType: "MEMBERSHIP_MONTHLY",
+      productName: item.name,
+      amountCents: item.priceCents,
+      plan
+    };
+  }
+
+  if (plan === "quarterly") {
+    return {
+      productType: "MEMBERSHIP_QUARTERLY",
       productName: item.name,
       amountCents: item.priceCents,
       plan

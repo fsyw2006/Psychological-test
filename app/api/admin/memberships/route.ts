@@ -48,9 +48,11 @@ export async function POST(request: Request) {
   }
 
   if (body?.action === "open" && body.email) {
-    const plan = body.plan === "YEARLY" ? "YEARLY" : "MONTHLY";
+    const plan =
+      body.plan === "YEARLY" ? "YEARLY" : body.plan === "QUARTERLY" ? "QUARTERLY" : "MONTHLY";
     const now = new Date();
-    const endsAt = plan === "YEARLY" ? addYears(now, 1) : addMonths(now, 1);
+    const endsAt =
+      plan === "YEARLY" ? addYears(now, 1) : addMonths(now, plan === "QUARTERLY" ? 3 : 1);
     const { data: user, error: userError } = await supabase
       .from("users")
       .select("id")
