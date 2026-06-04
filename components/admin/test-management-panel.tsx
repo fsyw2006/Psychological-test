@@ -428,7 +428,12 @@ export function TestManagementPanel({
                 className="min-h-24"
               />
             </div>
-            <Button type="button" onClick={createTest} disabled={creating}>
+            <Button
+              type="button"
+              onClick={createTest}
+              disabled={creating}
+              className="w-full sm:w-fit"
+            >
               {creating ? <Loader2 className="animate-spin" /> : <Plus />}
               添加测评并创建报告模板
             </Button>
@@ -536,6 +541,7 @@ export function TestManagementPanel({
                       variant="outline"
                       onClick={() => generateQuestions(test)}
                       disabled={generating === test.slug}
+                      className="w-full sm:w-auto"
                     >
                       {generating === test.slug ? (
                         <Loader2 className="animate-spin" />
@@ -548,6 +554,7 @@ export function TestManagementPanel({
                       type="button"
                       onClick={() => applyQuestions(test)}
                       disabled={!generatedQuestions.length || applying === test.slug}
+                      className="w-full sm:w-auto"
                     >
                       {applying === test.slug ? (
                         <Loader2 className="animate-spin" />

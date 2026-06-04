@@ -154,7 +154,7 @@ export function ReportTemplateAdmin({ tests }: { tests: TemplateTest[] }) {
             <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0">
                 <CardTitle>{test.title}</CardTitle>
-                <p className="mt-2 text-sm text-muted-foreground">
+                <p className="mt-2 break-words text-sm text-muted-foreground">
                   绑定结果类型：{resultTypeOptions.join(" / ") || "默认"}
                 </p>
               </div>
@@ -192,6 +192,7 @@ export function ReportTemplateAdmin({ tests }: { tests: TemplateTest[] }) {
                   variant="outline"
                   onClick={() => generateTemplate(test)}
                   disabled={generating === test.slug}
+                  className="w-full md:w-auto"
                 >
                   {generating === test.slug ? (
                     <Loader2 className="animate-spin" />
@@ -204,6 +205,7 @@ export function ReportTemplateAdmin({ tests }: { tests: TemplateTest[] }) {
                   type="button"
                   onClick={() => save(test)}
                   disabled={saving === test.slug}
+                  className="w-full md:w-auto"
                 >
                   {saving === test.slug ? <Loader2 className="animate-spin" /> : <Save />}
                   保存模板
@@ -218,7 +220,7 @@ export function ReportTemplateAdmin({ tests }: { tests: TemplateTest[] }) {
                     [test.slug]: event.target.value
                   }))
                 }
-                className="min-h-80 font-mono text-xs leading-5"
+                className="min-h-80 max-w-full font-mono text-xs leading-5"
               />
             </CardContent>
           </Card>
