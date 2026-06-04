@@ -7,6 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getMembershipPlans } from "@/lib/pricing";
 import type { PlanSlug } from "@/lib/types";
 
+type PaymentProvider = "wechat" | "alipay";
+
 export const metadata: Metadata = {
   title: "收银台",
   description: "微信支付与支付宝支付收银台。"
@@ -18,12 +20,14 @@ export const revalidate = 0;
 export default async function CheckoutPage({
   searchParams
 }: {
-  searchParams: Promise<{ plan?: PlanSlug; resultId?: string }>;
+  searchParams: Promise<{ plan?: PlanSlug; resultId?: string; provider?: PaymentProvider }>;
 }) {
-  const { plan = "monthly", resultId } = await searchParams;
+  const { plan = "monthly", resultId, provider } = await searchParams;
   const safePlan: PlanSlug = ["monthly", "yearly", "single-report"].includes(plan)
     ? plan
     : "monthly";
+  const safeProvider: PaymentProvider | undefined =
+    provider === "wechat" || provider === "alipay" ? provider : undefined;
   const plans = await getMembershipPlans();
   const missingSingleReport = safePlan === "single-report" && !resultId;
 
@@ -63,7 +67,12 @@ export default async function CheckoutPage({
           </CardContent>
         </Card>
       ) : (
-        <CheckoutPanel plan={safePlan} resultId={resultId} plans={plans} />
+        <CheckoutPanel
+          plan={safePlan}
+          resultId={resultId}
+          plans={plans}
+          initialProvider={safeProvider}
+        />
       )}
     </section>
   );

@@ -1,13 +1,24 @@
 import { hasServiceRoleEnv } from "@/lib/env";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 
-export type AiProvider = "openai" | "deepseek" | "claude" | "mock";
+export const AI_PROVIDERS = [
+  "mock",
+  "openai",
+  "deepseek",
+  "xiaomi-mimo",
+  "custom-openai",
+  "claude"
+] as const;
+
+export type AiProvider = (typeof AI_PROVIDERS)[number];
 
 export type AiSettings = {
   aiChatEnabled: boolean;
   aiQuestionBankEnabled: boolean;
   aiReportTemplateEnabled: boolean;
+  aiArticleEnabled: boolean;
   aiProvider: AiProvider;
+  aiBaseUrl: string;
   aiModel: string;
   aiApiKey: string;
   aiSystemPrompt: string;
@@ -23,12 +34,44 @@ let memoryAiSettings: AiSettings | null = null;
 const safetyPrompt =
   "你不是医生，也不能诊断疾病。你只能提供情绪支持、自我觉察建议和心理健康科普。如用户表达自伤或伤害他人风险，应建议立即联系当地急救电话、专业机构或可信赖的人。";
 
+export function isAiProvider(value: unknown): value is AiProvider {
+  return typeof value === "string" && AI_PROVIDERS.includes(value as AiProvider);
+}
+
+export function defaultAiBaseUrl(provider: AiProvider) {
+  if (provider === "openai") return "https://api.openai.com/v1";
+  if (provider === "deepseek") return "https://api.deepseek.com";
+  if (provider === "xiaomi-mimo") return "https://token-plan-cn.xiaomimimo.com/v1";
+  if (provider === "claude") return "https://api.anthropic.com/v1";
+  return "";
+}
+
+export function normalizeAiBaseUrl(value?: string | null) {
+  const trimmed = (value || "").trim();
+  if (!trimmed) return "";
+
+  try {
+    const url = new URL(trimmed);
+    url.pathname = url.pathname
+      .replace(/\/+$/g, "")
+      .replace(/\/chat\/completions$/i, "")
+      .replace(/\/models$/i, "");
+    url.search = "";
+    url.hash = "";
+    return url.toString().replace(/\/+$/g, "");
+  } catch {
+    return trimmed.replace(/\/+$/g, "");
+  }
+}
+
 export function defaultAiSettings(): AiSettings {
   return {
     aiChatEnabled: false,
     aiQuestionBankEnabled: false,
     aiReportTemplateEnabled: false,
+    aiArticleEnabled: false,
     aiProvider: "mock",
+    aiBaseUrl: "",
     aiModel: "mock-companion",
     aiApiKey: "",
     aiSystemPrompt: safetyPrompt,
@@ -39,8 +82,9 @@ export function defaultAiSettings(): AiSettings {
 
 function normalizeAiSettings(input?: AiSettingsInput | null): AiSettings {
   const base = defaultAiSettings();
-  const provider = input?.aiProvider || base.aiProvider;
+  const provider = isAiProvider(input?.aiProvider) ? input.aiProvider : base.aiProvider;
   const systemPrompt = input?.aiSystemPrompt || base.aiSystemPrompt;
+  const baseUrl = normalizeAiBaseUrl(input?.aiBaseUrl || defaultAiBaseUrl(provider));
 
   return {
     aiChatEnabled: Boolean(input?.aiChatEnabled ?? base.aiChatEnabled),
@@ -50,9 +94,9 @@ function normalizeAiSettings(input?: AiSettingsInput | null): AiSettings {
     aiReportTemplateEnabled: Boolean(
       input?.aiReportTemplateEnabled ?? base.aiReportTemplateEnabled
     ),
-    aiProvider: ["openai", "deepseek", "claude", "mock"].includes(provider)
-      ? provider
-      : "mock",
+    aiArticleEnabled: Boolean(input?.aiArticleEnabled ?? base.aiArticleEnabled),
+    aiProvider: provider,
+    aiBaseUrl: provider === "mock" ? "" : baseUrl,
     aiModel: input?.aiModel || base.aiModel,
     aiApiKey: input?.aiApiKey || "",
     aiSystemPrompt: systemPrompt.includes("你不是医生")

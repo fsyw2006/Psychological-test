@@ -2,8 +2,12 @@ import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { getCurrentProfile } from "@/lib/auth";
 import { hasSupabaseEnv } from "@/lib/env";
-import { getPaymentConfig } from "@/lib/payments/config";
-import { createMockPayment, isMockPaymentEnabled } from "@/lib/payments/mock";
+import {
+  getPaymentConfig,
+  isPaymentChannelEnabled,
+  shouldUseMockPayment
+} from "@/lib/payments/config";
+import { createMockPayment } from "@/lib/payments/mock";
 import { createCheckoutOrder } from "@/lib/payments/orders";
 import {
   createWechatNativePayment,
@@ -33,7 +37,14 @@ export async function POST(request: NextRequest) {
 
   try {
     const paymentConfig = await getPaymentConfig();
-    const useMockPayment = isMockPaymentEnabled() && !paymentConfig.wechat.enabled;
+    const useMockPayment = shouldUseMockPayment(paymentConfig, "wechat");
+
+    if (!useMockPayment && !isPaymentChannelEnabled(paymentConfig, "wechat")) {
+      return NextResponse.json(
+        { error: "微信收款通道已关闭，请选择其他支付方式。" },
+        { status: 400 }
+      );
+    }
 
     if (!useMockPayment) {
       await ensureWechatPaymentReady();

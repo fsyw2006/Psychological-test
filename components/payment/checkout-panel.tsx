@@ -10,6 +10,14 @@ import type { MembershipPlan, PlanSlug } from "@/lib/types";
 import { formatCurrency } from "@/lib/utils";
 
 type PaymentProvider = "wechat" | "alipay";
+type PaymentMode = "production" | "mock";
+
+type PaymentChannel = {
+  id: PaymentProvider;
+  name: string;
+  mode: PaymentMode;
+};
+
 type MockPayment = {
   orderNo: string;
   provider: "WECHAT" | "ALIPAY";
@@ -17,16 +25,25 @@ type MockPayment = {
 
 type RealPayment = MockPayment;
 
+const providerIcons = {
+  wechat: QrCode,
+  alipay: CreditCard
+};
+
 export function CheckoutPanel({
   plan,
   resultId,
-  plans
+  plans,
+  initialProvider
 }: {
   plan: PlanSlug;
   resultId?: string;
   plans: MembershipPlan[];
+  initialProvider?: PaymentProvider;
 }) {
-  const [provider, setProvider] = useState<PaymentProvider>("wechat");
+  const [channels, setChannels] = useState<PaymentChannel[]>([]);
+  const [provider, setProvider] = useState<PaymentProvider | "">(initialProvider || "");
+  const [channelsLoading, setChannelsLoading] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [codeUrl, setCodeUrl] = useState("");
@@ -35,10 +52,55 @@ export function CheckoutPanel({
   const [realPayment, setRealPayment] = useState<RealPayment | null>(null);
   const selectedPlan = plans.find((item) => item.slug === plan) || plans[0];
   const missingReportId = plan === "single-report" && !resultId;
+  const activeProvider = provider || channels[0]?.id || "";
+  const activeChannel = channels.find((channel) => channel.id === activeProvider);
   const successUrl =
     plan === "single-report" && resultId
       ? `/reports/${encodeURIComponent(resultId)}?unlocked=1`
       : "/checkout/success";
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadChannels() {
+      setChannelsLoading(true);
+      setError("");
+
+      try {
+        const response = await fetch("/api/payments/channels", {
+          credentials: "include",
+          cache: "no-store"
+        });
+        const data = await response.json().catch(() => ({}));
+        const nextChannels = (data.channels || []) as PaymentChannel[];
+
+        if (cancelled) return;
+        setChannels(nextChannels);
+        setChannelsLoading(false);
+
+        if (!nextChannels.length) {
+          setProvider("");
+          setError("后台暂未开启任何收款通道，请联系管理员。");
+          return;
+        }
+
+        const preferred = initialProvider
+          ? nextChannels.find((channel) => channel.id === initialProvider)?.id
+          : undefined;
+        setProvider(preferred || nextChannels[0].id);
+      } catch {
+        if (cancelled) return;
+        setChannels([]);
+        setChannelsLoading(false);
+        setError("读取收款通道失败，请稍后再试。");
+      }
+    }
+
+    loadChannels();
+    return () => {
+      cancelled = true;
+    };
+  }, [initialProvider]);
 
   useEffect(() => {
     if (!codeUrl) return;
@@ -58,6 +120,11 @@ export function CheckoutPanel({
       return;
     }
 
+    if (!activeProvider) {
+      setError("后台暂未开启任何收款通道，请联系管理员。");
+      return;
+    }
+
     setLoading(true);
     setError("");
     setCodeUrl("");
@@ -66,7 +133,9 @@ export function CheckoutPanel({
     setRealPayment(null);
 
     const endpoint =
-      provider === "wechat" ? "/api/payments/wechat/create" : "/api/payments/alipay/create";
+      activeProvider === "wechat"
+        ? "/api/payments/wechat/create"
+        : "/api/payments/alipay/create";
     const response = await fetch(endpoint, {
       method: "POST",
       headers: {
@@ -96,7 +165,7 @@ export function CheckoutPanel({
       return;
     }
 
-    if (provider === "alipay" && data.payment?.paymentUrl) {
+    if (activeProvider === "alipay" && data.payment?.paymentUrl) {
       window.location.href = data.payment.paymentUrl;
       return;
     }
@@ -164,9 +233,7 @@ export function CheckoutPanel({
       return;
     }
 
-    setError(
-      data.providerState?.message || "暂未查询到支付成功，请完成支付后再试。"
-    );
+    setError(data.providerState?.message || "暂未查询到支付成功，请完成支付后再试。");
   }
 
   return (
@@ -188,28 +255,39 @@ export function CheckoutPanel({
           <p className="text-sm text-muted-foreground">{selectedPlan.period}</p>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2">
-          <button
-            type="button"
-            onClick={() => setProvider("wechat")}
-            className={`focus-ring rounded-md border p-4 text-left ${
-              provider === "wechat" ? "border-primary bg-primary/10" : "bg-background/70"
-            }`}
-          >
-            <QrCode className="mb-2 size-5 text-primary" />
-            <p className="font-semibold">微信支付</p>
-          </button>
-          <button
-            type="button"
-            onClick={() => setProvider("alipay")}
-            className={`focus-ring rounded-md border p-4 text-left ${
-              provider === "alipay" ? "border-primary bg-primary/10" : "bg-background/70"
-            }`}
-          >
-            <CreditCard className="mb-2 size-5 text-primary" />
-            <p className="font-semibold">支付宝支付</p>
-          </button>
-        </div>
+        {channelsLoading ? (
+          <div className="rounded-md border border-border bg-background/60 px-3 py-4 text-sm text-muted-foreground">
+            正在读取后台收款通道...
+          </div>
+        ) : channels.length ? (
+          <div className="grid gap-3 sm:grid-cols-2">
+            {channels.map((channel) => {
+              const Icon = providerIcons[channel.id];
+              const active = activeProvider === channel.id;
+
+              return (
+                <button
+                  key={channel.id}
+                  type="button"
+                  onClick={() => setProvider(channel.id)}
+                  className={`focus-ring rounded-md border p-4 text-left ${
+                    active ? "border-primary bg-primary/10" : "bg-background/70"
+                  }`}
+                >
+                  <Icon className="mb-2 size-5 text-primary" />
+                  <p className="font-semibold">{channel.name}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {channel.mode === "mock" ? "模拟支付测试" : "真实收款通道"}
+                  </p>
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="rounded-md border border-destructive/25 bg-destructive/10 px-3 py-4 text-sm text-destructive">
+            后台暂未开启任何收款通道。
+          </div>
+        )}
 
         <div className="rounded-md border border-border bg-background/60 px-3 py-2 text-xs leading-5 text-muted-foreground">
           订单创建后 {ORDER_EXPIRE_MINUTES} 分钟内未支付会自动关闭，关闭后需要重新创建订单。
@@ -248,9 +326,18 @@ export function CheckoutPanel({
           </div>
         ) : null}
 
-        <Button onClick={pay} disabled={loading || missingReportId} className="w-full" size="lg">
+        <Button
+          onClick={pay}
+          disabled={loading || channelsLoading || missingReportId || !activeProvider}
+          className="w-full"
+          size="lg"
+        >
           {loading ? <Loader2 className="animate-spin" /> : <CreditCard />}
-          {loading ? "创建订单中" : "确认支付"}
+          {loading
+            ? "创建订单中..."
+            : activeChannel?.mode === "mock"
+              ? "确认模拟支付"
+              : "确认支付"}
         </Button>
       </CardContent>
     </Card>

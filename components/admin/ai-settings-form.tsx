@@ -112,6 +112,20 @@ export function AiSettingsForm({
                 aria-label="开启报告模板 AI 辅助"
               />
             </div>
+
+            <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-background/60 px-3 py-3 text-sm font-medium">
+              <div>
+                <p>开启文章 AI 生成</p>
+                <p className="mt-1 text-xs font-normal text-muted-foreground">
+                  默认关闭；开启后后台文章页才允许生成文章草稿。
+                </p>
+              </div>
+              <Switch
+                checked={settings.aiArticleEnabled}
+                onChange={(event) => update("aiArticleEnabled", event.target.checked)}
+                aria-label="开启文章 AI 生成"
+              />
+            </div>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">

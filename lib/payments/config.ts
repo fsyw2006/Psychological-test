@@ -28,6 +28,14 @@ export type PaymentRuntimeConfig = {
   alipay: AlipayConfig;
 };
 
+export type PaymentChannelId = "wechat" | "alipay";
+
+export type PublicPaymentChannel = {
+  id: PaymentChannelId;
+  name: string;
+  mode: "production" | "mock";
+};
+
 export type PaymentConfigInput = {
   wechat?: Partial<WechatPayConfig>;
   alipay?: Partial<AlipayConfig>;
@@ -60,7 +68,8 @@ function envConfig(): PaymentRuntimeConfig {
       appId: process.env.ALIPAY_APP_ID || "",
       privateKey: process.env.ALIPAY_PRIVATE_KEY || "",
       publicKey: process.env.ALIPAY_PUBLIC_KEY || "",
-      notifyUrl: process.env.ALIPAY_NOTIFY_URL || absoluteUrl("/api/payments/alipay/callback"),
+      notifyUrl:
+        process.env.ALIPAY_NOTIFY_URL || absoluteUrl("/api/payments/alipay/callback"),
       returnUrl: process.env.ALIPAY_RETURN_URL || absoluteUrl("/checkout/success"),
       gateway: process.env.ALIPAY_GATEWAY || "https://openapi.alipay.com/gateway.do"
     }
@@ -184,6 +193,52 @@ export async function getPaymentConfig() {
   return mergeConfig(envConfig(), (await loadStoredConfig()) || undefined);
 }
 
+export function hasProductionPaymentChannel(config: PaymentRuntimeConfig) {
+  return Boolean(config.wechat.enabled || config.alipay.enabled);
+}
+
+export function isPaymentChannelEnabled(
+  config: PaymentRuntimeConfig,
+  channel: PaymentChannelId
+) {
+  return channel === "wechat" ? Boolean(config.wechat.enabled) : Boolean(config.alipay.enabled);
+}
+
+export function shouldUseMockPayment(
+  config: PaymentRuntimeConfig,
+  channel: PaymentChannelId
+) {
+  return (
+    process.env.MOCK_PAYMENT_ENABLED === "true" &&
+    !hasProductionPaymentChannel(config) &&
+    !isPaymentChannelEnabled(config, channel)
+  );
+}
+
+export async function getPublicPaymentChannels() {
+  const config = await getPaymentConfig();
+  const productionChannels: PublicPaymentChannel[] = [];
+
+  if (config.wechat.enabled) {
+    productionChannels.push({ id: "wechat", name: "微信支付", mode: "production" });
+  }
+
+  if (config.alipay.enabled) {
+    productionChannels.push({ id: "alipay", name: "支付宝支付", mode: "production" });
+  }
+
+  if (productionChannels.length) return productionChannels;
+
+  if (process.env.MOCK_PAYMENT_ENABLED === "true") {
+    return [
+      { id: "wechat", name: "微信支付", mode: "mock" },
+      { id: "alipay", name: "支付宝支付", mode: "mock" }
+    ] satisfies PublicPaymentChannel[];
+  }
+
+  return [] satisfies PublicPaymentChannel[];
+}
+
 export async function savePaymentConfig(input: PaymentConfigInput) {
   const current = await getPaymentConfig();
   const mergeChannel = <T extends Record<string, unknown>>(
@@ -199,8 +254,14 @@ export async function savePaymentConfig(input: PaymentConfigInput) {
   };
 
   const merged: PaymentRuntimeConfig = {
-    wechat: mergeChannel(current.wechat as unknown as Record<string, unknown>, input.wechat as unknown as Record<string, unknown>) as unknown as WechatPayConfig,
-    alipay: mergeChannel(current.alipay as unknown as Record<string, unknown>, input.alipay as unknown as Record<string, unknown>) as unknown as AlipayConfig
+    wechat: mergeChannel(
+      current.wechat as unknown as Record<string, unknown>,
+      input.wechat as unknown as Record<string, unknown>
+    ) as unknown as WechatPayConfig,
+    alipay: mergeChannel(
+      current.alipay as unknown as Record<string, unknown>,
+      input.alipay as unknown as Record<string, unknown>
+    ) as unknown as AlipayConfig
   };
 
   const stored = {

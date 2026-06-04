@@ -2,14 +2,14 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Home, LayoutGrid, Library, LogOut, Menu, UserRound, X } from "lucide-react";
+import { Bot, Home, LayoutGrid, Library, LogOut, Menu, UserRound, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
-const navItems = [
+const baseNavItems = [
   { href: "/", label: "首页", icon: Home },
   { href: "/tests", label: "测评中心", icon: LayoutGrid },
   { href: "/articles", label: "心理文章", icon: Library },
@@ -43,10 +43,23 @@ export function SiteHeader({ initialUser = null }: { initialUser?: HeaderUser | 
   const [open, setOpen] = useState(false);
   const [user, setUser] = useState<HeaderUser | null>(initialUser);
   const [ready, setReady] = useState(Boolean(initialUser));
+  const [aiChatEnabled, setAiChatEnabled] = useState(false);
   const name = user?.name || user?.email.split("@")[0] || "我的小屋";
+  const navItems = aiChatEnabled
+    ? [...baseNavItems, { href: "/chat", label: "AI 聊天", icon: Bot }]
+    : baseNavItems;
 
   useEffect(() => {
     let alive = true;
+
+    fetch("/api/ai/status", { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { aiChatEnabled?: boolean } | null) => {
+        if (alive) setAiChatEnabled(Boolean(data?.aiChatEnabled));
+      })
+      .catch(() => {
+        if (alive) setAiChatEnabled(false);
+      });
 
     fetch("/api/auth/me", { cache: "no-store" })
       .then((res) => (res.ok ? res.json() : null))
