@@ -5,6 +5,7 @@ import {
   CreditCard,
   FileText,
   LayoutGrid,
+  LifeBuoy,
   ReceiptText,
   Settings,
   Tags,
@@ -19,6 +20,7 @@ const nav = [
   { href: "/admin/pricing", label: "定价", icon: Tags },
   { href: "/admin/payments", label: "收款通道", icon: CreditCard },
   { href: "/admin/orders", label: "订单", icon: ReceiptText },
+  { href: "/admin/support", label: "客服", icon: LifeBuoy },
   { href: "/admin/memberships", label: "会员", icon: Users },
   { href: "/admin/users", label: "用户", icon: Users },
   { href: "/admin/settings", label: "设置", icon: Settings }

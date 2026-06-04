@@ -1,8 +1,17 @@
 "use client";
 
-import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
+import {
+  FormEvent,
+  KeyboardEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState
+} from "react";
 import {
   Bot,
+  CheckCircle2,
   Clock3,
   CreditCard,
   FileText,
@@ -10,40 +19,55 @@ import {
   LifeBuoy,
   Loader2,
   MessageSquareText,
+  RefreshCw,
   RotateCcw,
   Send,
   Sparkles,
   UserRound
 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { cn } from "@/lib/utils";
-
-type SupportTopic = "account" | "membership" | "payment" | "report" | "assessment" | "ai";
+import {
+  supportStatusLabel,
+  supportTopicLabel,
+  supportTopics,
+  type SupportStatus,
+  type SupportTopic
+} from "@/lib/support";
+import { cn, formatDate } from "@/lib/utils";
 
 type SupportMessage = {
   id: string;
-  role: "agent" | "user";
+  sender: "user" | "admin";
   content: string;
-  createdAt: string;
+  created_at: string;
 };
 
-const STORAGE_KEY = "soul-house-support-messages";
+type SupportTicket = {
+  id: string;
+  topic: SupportTopic;
+  contact_name?: string | null;
+  contact_value?: string | null;
+  status: SupportStatus;
+  created_at: string;
+  updated_at: string;
+};
+
+const VISITOR_KEY = "soul-house-support-visitor-id";
+const TICKET_KEY = "soul-house-support-ticket-id";
 const CONTACT_KEY = "soul-house-support-contact";
 
-const topics: Array<{
-  key: SupportTopic;
-  label: string;
-  icon: typeof UserRound;
-}> = [
-  { key: "account", label: "账号登录", icon: UserRound },
-  { key: "membership", label: "会员权益", icon: Sparkles },
-  { key: "payment", label: "支付订单", icon: CreditCard },
-  { key: "report", label: "报告问题", icon: FileText },
-  { key: "assessment", label: "测评题库", icon: MessageSquareText },
-  { key: "ai", label: "AI 功能", icon: Bot }
-];
+const topicIcons: Record<SupportTopic, typeof UserRound> = {
+  account: UserRound,
+  membership: Sparkles,
+  payment: CreditCard,
+  report: FileText,
+  assessment: MessageSquareText,
+  ai: Bot,
+  other: LifeBuoy
+};
 
 const quickQuestions = [
   "会员已开通但没有生效",
@@ -53,7 +77,7 @@ const quickQuestions = [
   "想联系人工客服"
 ];
 
-function uid() {
+function createVisitorId() {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
     return crypto.randomUUID();
   }
@@ -61,138 +85,148 @@ function uid() {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-function nowTime() {
-  return new Intl.DateTimeFormat("zh-CN", {
-    hour: "2-digit",
-    minute: "2-digit"
-  }).format(new Date());
+function readVisitorId() {
+  const saved = localStorage.getItem(VISITOR_KEY);
+  if (saved) return saved;
+
+  const next = createVisitorId();
+  localStorage.setItem(VISITOR_KEY, next);
+  return next;
 }
 
-function createMessage(role: SupportMessage["role"], content: string): SupportMessage {
-  return {
-    id: uid(),
-    role,
-    content,
-    createdAt: nowTime()
-  };
-}
-
-function welcomeMessage() {
-  return createMessage(
-    "agent",
-    "您好，我是心灵小屋客服。请描述你遇到的问题，我会先帮你定位账号、会员、支付、报告或 AI 设置相关原因。"
-  );
-}
-
-function topicReply(topic: SupportTopic) {
-  const replies: Record<SupportTopic, string> = {
-    account:
-      "账号问题我会优先确认登录状态、邮箱是否一致，以及当前页面是否读取到用户资料。",
-    membership:
-      "会员问题通常需要核对会员状态、到期时间和订单是否支付成功。你可以告诉我购买的是月卡、年卡还是单次报告。",
-    payment:
-      "支付问题我会先看订单号、支付通道和订单状态。若已扣款但未生效，通常需要重新查询支付状态。",
-    report:
-      "报告问题我会先区分模板报告、AI 个性化报告和未解锁报告。你可以把报告页显示的提示发给我。",
-    assessment:
-      "测评题库问题通常和题库初始化、分类绑定或后台题库保存有关。你可以告诉我是哪个分类或哪个测评。",
-    ai:
-      "AI 功能问题我会优先确认服务商、模型、API Key、Base URL，以及页面显示的失败原因。"
-  };
-
-  return replies[topic];
-}
-
-function inferReply(content: string, topic: SupportTopic, hasContact: boolean) {
-  const text = content.toLowerCase();
-
-  if (/会员|权益|开通|生效|无限/.test(content)) {
-    return "如果你已经开通会员但功能没生效，请先确认当前登录邮箱和付款账号是否一致。后台可核对 memberships 是否为 ACTIVE、ends_at 是否未过期。";
-  }
-
-  if (/支付|订单|微信|支付宝|扣款|未支付|付款/.test(content)) {
-    return "支付问题建议先记录订单号和支付方式。若页面显示未支付但已经扣款，可以在后台订单里查询支付状态，必要时重新触发支付查询接口。";
-  }
-
-  if (/ai|AI|个性化|json|超时|模板/.test(content)) {
-    return "AI 报告需要模型真实返回合法 JSON 才会显示 AI 个性化。若失败，结果页会显示原因；失败后等待 30 秒可以重试，成功后同一份报告不能再次生成。";
-  }
-
-  if (/报告|解锁|高级分析|模板报告/.test(content)) {
-    return "报告问题要先看高级分析右上角标签：AI 个性化表示生成成功，AI未成功表示模型调用失败，模板报告表示当前使用固定模板。";
-  }
-
-  if (/题|题库|测评|分类|0 项|提交/.test(content)) {
-    return "测评题库问题通常先去后台测评管理点击分批恢复内置题库，再刷新首页和测评中心确认数量。";
-  }
-
-  if (/人工|客服|联系|电话|微信|qq|QQ/.test(content)) {
-    return hasContact
-      ? "我已经记录了你的联系方式。当前是预接待回复，后续可以接入后台工单或人工客服通知。"
-      : "可以先在左侧留下联系方式，我会把当前问题和联系方式一起整理为待处理信息。";
-  }
-
-  return `${topicReply(topic)} 你可以继续补充具体页面、报错文字或操作步骤，我会按这个方向帮你排查。`;
-}
-
-function readMessages() {
+function readContactDraft() {
   try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    const parsed = saved ? (JSON.parse(saved) as SupportMessage[]) : null;
-    return Array.isArray(parsed) && parsed.length ? parsed : [welcomeMessage()];
+    const saved = localStorage.getItem(CONTACT_KEY);
+    return saved ? (JSON.parse(saved) as { name?: string; contact?: string }) : {};
   } catch {
-    return [welcomeMessage()];
+    return {};
   }
 }
 
 export function SupportChat() {
   const [topic, setTopic] = useState<SupportTopic>("report");
-  const [messages, setMessages] = useState<SupportMessage[]>([welcomeMessage()]);
+  const [ticket, setTicket] = useState<SupportTicket | null>(null);
+  const [messages, setMessages] = useState<SupportMessage[]>([]);
+  const [visitorId, setVisitorId] = useState("");
+  const [ticketId, setTicketId] = useState("");
   const [value, setValue] = useState("");
-  const [replying, setReplying] = useState(false);
   const [contactName, setContactName] = useState("");
   const [contact, setContact] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const [notice, setNotice] = useState("");
+  const [error, setError] = useState("");
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
   const activeTopic = useMemo(
-    () => topics.find((item) => item.key === topic) || topics[0],
+    () => supportTopics.find((item) => item.key === topic) || supportTopics[0],
     [topic]
   );
+  const status = ticket?.status || "OPEN";
+
+  const loadMessages = useCallback(async (nextTicketId = ticketId, nextVisitorId = visitorId) => {
+    if (!nextVisitorId) return;
+
+    setLoading(true);
+    const params = new URLSearchParams({ visitorId: nextVisitorId });
+    if (nextTicketId) params.set("ticketId", nextTicketId);
+
+    const response = await fetch(`/api/support/messages?${params.toString()}`, {
+      credentials: "include",
+      cache: "no-store"
+    });
+    const data = await response.json().catch(() => ({}));
+    setLoading(false);
+
+    if (!response.ok) {
+      setError(data.error || "读取客服消息失败");
+      return;
+    }
+
+    setError("");
+    setTicket(data.ticket || null);
+    setMessages(data.messages || []);
+
+    if (data.ticket?.id) {
+      setTicketId(data.ticket.id);
+      localStorage.setItem(TICKET_KEY, data.ticket.id);
+      if (data.ticket.topic) setTopic(data.ticket.topic);
+      if (data.ticket.contact_name) setContactName(data.ticket.contact_name);
+      if (data.ticket.contact_value) setContact(data.ticket.contact_value);
+    }
+  }, [ticketId, visitorId]);
 
   useEffect(() => {
-    setMessages(readMessages());
-    try {
-      const savedContact = localStorage.getItem(CONTACT_KEY);
-      if (savedContact) {
-        const parsed = JSON.parse(savedContact) as { name?: string; contact?: string };
-        setContactName(parsed.name || "");
-        setContact(parsed.contact || "");
-      }
-    } catch {
-      // Ignore broken local drafts.
-    }
+    const nextVisitorId = readVisitorId();
+    const savedTicketId = localStorage.getItem(TICKET_KEY) || "";
+    const draft = readContactDraft();
+
+    setVisitorId(nextVisitorId);
+    setTicketId(savedTicketId);
+    setContactName(draft.name || "");
+    setContact(draft.contact || "");
+    loadMessages(savedTicketId, nextVisitorId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- Initial local storage hydration only.
   }, []);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(messages));
+    if (!ticketId || !visitorId) return;
+    const timer = window.setInterval(() => loadMessages(ticketId, visitorId), 12000);
+    return () => window.clearInterval(timer);
+  }, [loadMessages, ticketId, visitorId]);
+
+  useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [messages, replying]);
+  }, [messages, sending]);
 
-  function pushAgentReply(content: string) {
-    setReplying(true);
-    window.setTimeout(() => {
-      setMessages((current) => [...current, createMessage("agent", content)]);
-      setReplying(false);
-    }, 550);
-  }
-
-  function sendMessage(content: string) {
+  async function sendMessage(content: string) {
     const trimmed = content.trim();
-    if (!trimmed || replying) return;
+    if (!trimmed || sending) return;
 
-    setMessages((current) => [...current, createMessage("user", trimmed)]);
+    const currentVisitorId = visitorId || readVisitorId();
+    setVisitorId(currentVisitorId);
+    setSending(true);
+    setError("");
+    setNotice("");
+
+    localStorage.setItem(
+      CONTACT_KEY,
+      JSON.stringify({
+        name: contactName.trim(),
+        contact: contact.trim()
+      })
+    );
+
+    const response = await fetch("/api/support/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      cache: "no-store",
+      body: JSON.stringify({
+        ticketId: ticketId || null,
+        visitorId: currentVisitorId,
+        topic,
+        contactName,
+        contact,
+        message: trimmed
+      })
+    });
+    const data = await response.json().catch(() => ({}));
+    setSending(false);
+
+    if (!response.ok) {
+      setError(data.error || "发送失败，请稍后再试。");
+      return;
+    }
+
     setValue("");
-    pushAgentReply(inferReply(trimmed, topic, Boolean(contact.trim())));
+    setTicket(data.ticket || null);
+    setMessages(data.messages || []);
+    if (data.ticket?.id) {
+      setTicketId(data.ticket.id);
+      localStorage.setItem(TICKET_KEY, data.ticket.id);
+    }
+    setNotice("消息已发送到客服后台。");
   }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -207,45 +241,24 @@ export function SupportChat() {
     }
   }
 
-  function chooseTopic(nextTopic: SupportTopic) {
-    setTopic(nextTopic);
-    const next = topics.find((item) => item.key === nextTopic);
-    if (!next) return;
-
-    setMessages((current) => [
-      ...current,
-      createMessage("user", `我想咨询：${next.label}`)
-    ]);
-    pushAgentReply(topicReply(nextTopic));
-  }
-
   function saveContact() {
-    const cleanName = contactName.trim();
-    const cleanContact = contact.trim();
-    if (!cleanName && !cleanContact) return;
-
     localStorage.setItem(
       CONTACT_KEY,
       JSON.stringify({
-        name: cleanName,
-        contact: cleanContact
+        name: contactName.trim(),
+        contact: contact.trim()
       })
     );
-    setMessages((current) => [
-      ...current,
-      createMessage(
-        "agent",
-        `已记录联系方式：${cleanName || "未填写称呼"} / ${cleanContact || "未填写联系方式"}。`
-      )
-    ]);
+    setNotice("联系方式已保存。");
   }
 
   function resetChat() {
-    const nextMessages = [welcomeMessage()];
-    setMessages(nextMessages);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(nextMessages));
-    setReplying(false);
-    setValue("");
+    localStorage.removeItem(TICKET_KEY);
+    setTicket(null);
+    setMessages([]);
+    setTicketId("");
+    setNotice("已开始新的客服会话。");
+    setError("");
   }
 
   return (
@@ -257,26 +270,19 @@ export function SupportChat() {
               <Headphones className="size-6" />
             </div>
             <h1 className="mt-5 text-2xl font-semibold sm:text-3xl">在线客服</h1>
-            <p className="mt-3 text-sm leading-6 text-muted-foreground">
-              登录、会员、支付、测评、报告和 AI 功能都可以先在这里说明。
-            </p>
-            <div className="mt-5 grid gap-2 text-sm">
-              <div className="flex items-center gap-2 rounded-md border border-border bg-background/60 px-3 py-2">
-                <Clock3 className="size-4 text-primary" />
-                <span>当前为智能预接待</span>
-              </div>
-              <div className="flex items-center gap-2 rounded-md border border-border bg-background/60 px-3 py-2">
-                <LifeBuoy className="size-4 text-primary" />
-                <span>问题会按类型整理</span>
-              </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Badge variant={status === "OPEN" ? "outline" : "soft"}>
+                {supportStatusLabel(status)}
+              </Badge>
+              {ticketId ? <Badge variant="outline">工单已创建</Badge> : null}
             </div>
           </div>
 
           <div className="glass-panel rounded-lg p-4">
             <p className="font-semibold">问题类型</p>
             <div className="mt-3 grid grid-cols-2 gap-2">
-              {topics.map((item) => {
-                const Icon = item.icon;
+              {supportTopics.map((item) => {
+                const Icon = topicIcons[item.key];
                 const active = item.key === topic;
 
                 return (
@@ -285,7 +291,7 @@ export function SupportChat() {
                     type="button"
                     variant={active ? "default" : "outline"}
                     size="sm"
-                    onClick={() => chooseTopic(item.key)}
+                    onClick={() => setTopic(item.key)}
                     className="justify-start px-3"
                   >
                     <Icon />
@@ -318,6 +324,7 @@ export function SupportChat() {
                 className="w-full"
                 disabled={!contactName.trim() && !contact.trim()}
               >
+                <CheckCircle2 />
                 保存联系方式
               </Button>
             </div>
@@ -328,18 +335,26 @@ export function SupportChat() {
           <div className="flex flex-col gap-3 border-b border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
             <div>
               <p className="font-semibold">心灵小屋客服</p>
-              <p className="text-sm text-muted-foreground">当前主题：{activeTopic.label}</p>
+              <p className="text-sm text-muted-foreground">
+                当前主题：{supportTopicLabel(activeTopic.key)}
+              </p>
             </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={resetChat}
-              className="w-full sm:w-auto"
-            >
-              <RotateCcw />
-              清空记录
-            </Button>
+            <div className="grid gap-2 sm:flex">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => loadMessages()}
+                disabled={loading}
+              >
+                {loading ? <Loader2 className="animate-spin" /> : <RefreshCw />}
+                刷新回复
+              </Button>
+              <Button type="button" variant="outline" size="sm" onClick={resetChat}>
+                <RotateCcw />
+                新会话
+              </Button>
+            </div>
           </div>
 
           <div className="border-b border-border bg-background/40 px-4 py-3 sm:px-5">
@@ -358,8 +373,14 @@ export function SupportChat() {
           </div>
 
           <div className="flex-1 space-y-3 overflow-y-auto px-4 py-5 sm:px-5">
+            {!messages.length ? (
+              <div className="rounded-lg border border-border bg-background/75 px-4 py-3 text-sm leading-6 text-muted-foreground">
+                您好，我是心灵小屋客服。发送消息后，后台客服可以直接回复，你回来刷新即可看到回复。
+              </div>
+            ) : null}
+
             {messages.map((message) => {
-              const isUser = message.role === "user";
+              const isUser = message.sender === "user";
 
               return (
                 <div
@@ -381,46 +402,55 @@ export function SupportChat() {
                         isUser ? "text-primary-foreground/75" : "text-muted-foreground"
                       )}
                     >
-                      {message.createdAt}
+                      {isUser ? "我" : "客服"} · {formatDate(message.created_at)}
                     </p>
                   </div>
                 </div>
               );
             })}
 
-            {replying ? (
-              <div className="flex justify-start">
-                <div className="flex items-center gap-2 rounded-lg border border-border bg-background/75 px-4 py-3 text-sm text-muted-foreground">
+            {sending ? (
+              <div className="flex justify-end">
+                <div className="flex items-center gap-2 rounded-lg bg-primary px-4 py-3 text-sm text-primary-foreground">
                   <Loader2 className="size-4 animate-spin" />
-                  正在回复
+                  正在发送
                 </div>
               </div>
             ) : null}
             <div ref={bottomRef} />
           </div>
 
-          <form
-            onSubmit={handleSubmit}
-            className="grid gap-2 border-t border-border bg-background/55 p-3 sm:grid-cols-[1fr_auto] sm:p-4"
-          >
-            <Textarea
-              value={value}
-              onChange={(event) => setValue(event.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="请输入你的问题"
-              aria-label="客服消息"
-              disabled={replying}
-              className="min-h-12 resize-none"
-            />
-            <Button
-              type="submit"
-              disabled={!value.trim() || replying}
-              className="w-full self-end sm:w-auto"
-            >
-              <Send />
-              发送
-            </Button>
-          </form>
+          <div className="space-y-2 border-t border-border bg-background/55 p-3 sm:p-4">
+            {notice ? (
+              <div className="rounded-md border border-primary/20 bg-primary/10 px-3 py-2 text-sm text-primary">
+                {notice}
+              </div>
+            ) : null}
+            {error ? (
+              <div className="rounded-md border border-destructive/25 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {error}
+              </div>
+            ) : null}
+            <form onSubmit={handleSubmit} className="grid gap-2 sm:grid-cols-[1fr_auto]">
+              <Textarea
+                value={value}
+                onChange={(event) => setValue(event.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="请输入你的问题"
+                aria-label="客服消息"
+                disabled={sending}
+                className="min-h-12 resize-none"
+              />
+              <Button
+                type="submit"
+                disabled={!value.trim() || sending}
+                className="w-full self-end sm:w-auto"
+              >
+                {sending ? <Loader2 className="animate-spin" /> : <Send />}
+                发送
+              </Button>
+            </form>
+          </div>
         </div>
       </div>
     </section>
