@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { Bot, Loader2, Save } from "lucide-react";
+import { Bot, Loader2, RefreshCw, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -9,6 +9,15 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import type { AiSettings } from "@/lib/ai-settings";
+
+const providerBaseUrls: Record<AiSettings["aiProvider"], string> = {
+  mock: "",
+  openai: "https://api.openai.com/v1",
+  deepseek: "https://api.deepseek.com",
+  "xiaomi-mimo": "https://token-plan-cn.xiaomimimo.com/v1",
+  "custom-openai": "",
+  claude: "https://api.anthropic.com/v1"
+};
 
 export function AiSettingsForm({
   initialSettings,
@@ -19,10 +28,69 @@ export function AiSettingsForm({
 }) {
   const [settings, setSettings] = useState(initialSettings);
   const [saving, setSaving] = useState(false);
+  const [loadingModels, setLoadingModels] = useState(false);
+  const [models, setModels] = useState<string[]>([]);
   const [message, setMessage] = useState("");
+  const canFetchModels = !["mock", "claude"].includes(settings.aiProvider);
 
   function update<K extends keyof AiSettings>(key: K, value: AiSettings[K]) {
     setSettings((current) => ({ ...current, [key]: value }));
+  }
+
+  function changeProvider(provider: AiSettings["aiProvider"]) {
+    setModels([]);
+    setSettings((current) => {
+      const oldDefaultBaseUrl = providerBaseUrls[current.aiProvider];
+      const shouldUseProviderDefault =
+        !current.aiBaseUrl || current.aiBaseUrl === oldDefaultBaseUrl;
+      const nextBaseUrl = shouldUseProviderDefault
+        ? providerBaseUrls[provider]
+        : current.aiBaseUrl;
+
+      return {
+        ...current,
+        aiProvider: provider,
+        aiBaseUrl: provider === "mock" ? "" : nextBaseUrl,
+        aiModel: provider === "mock" ? "mock-companion" : current.aiModel
+      };
+    });
+  }
+
+  async function fetchModels() {
+    setLoadingModels(true);
+    setMessage("");
+
+    const response = await fetch("/api/admin/ai-settings/models", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      cache: "no-store",
+      body: JSON.stringify({
+        aiProvider: settings.aiProvider,
+        aiBaseUrl: settings.aiBaseUrl,
+        aiApiKey: settings.aiApiKey
+      })
+    });
+    const data = await response.json().catch(() => ({}));
+    setLoadingModels(false);
+
+    if (!response.ok) {
+      setModels([]);
+      setMessage(data.error || "获取模型列表失败");
+      return;
+    }
+
+    const nextModels = (data.models || []) as string[];
+    setModels(nextModels);
+    setSettings((current) => ({
+      ...current,
+      aiBaseUrl: data.baseUrl || current.aiBaseUrl,
+      aiModel:
+        current.aiModel && current.aiModel !== "mock-companion"
+          ? current.aiModel
+          : nextModels[0] || current.aiModel
+    }));
+    setMessage(`已获取 ${nextModels.length} 个模型`);
   }
 
   async function save(event: FormEvent<HTMLFormElement>) {
@@ -135,24 +203,68 @@ export function AiSettingsForm({
                 id="ai-provider"
                 value={settings.aiProvider}
                 onChange={(event) =>
-                  update("aiProvider", event.target.value as AiSettings["aiProvider"])
+                  changeProvider(event.target.value as AiSettings["aiProvider"])
                 }
                 className="focus-ring h-11 w-full rounded-md border border-input bg-background/70 px-3 text-sm"
               >
-                <option value="mock">mock</option>
-                <option value="openai">openai</option>
-                <option value="deepseek">deepseek</option>
-                <option value="claude">claude</option>
+                <option value="mock">Mock 测试模式</option>
+                <option value="openai">OpenAI</option>
+                <option value="deepseek">DeepSeek</option>
+                <option value="xiaomi-mimo">小米 Mimo</option>
+                <option value="custom-openai">自定义 OpenAI 兼容接口</option>
+                <option value="claude">Claude（旧 Anthropic 协议）</option>
               </select>
             </div>
             <div className="space-y-2">
               <Label htmlFor="ai-model">模型名称</Label>
-              <Input
-                id="ai-model"
-                value={settings.aiModel}
-                onChange={(event) => update("aiModel", event.target.value)}
-              />
+              {models.length ? (
+                <select
+                  id="ai-model"
+                  value={settings.aiModel}
+                  onChange={(event) => update("aiModel", event.target.value)}
+                  className="focus-ring h-11 w-full rounded-md border border-input bg-background/70 px-3 text-sm"
+                >
+                  {models.map((model) => (
+                    <option key={model} value={model}>
+                      {model}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <Input
+                  id="ai-model"
+                  value={settings.aiModel}
+                  onChange={(event) => update("aiModel", event.target.value)}
+                />
+              )}
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="ai-base-url">Base URL（OpenAI 兼容接口）</Label>
+            <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+              <Input
+                id="ai-base-url"
+                value={settings.aiBaseUrl}
+                disabled={settings.aiProvider === "mock"}
+                placeholder="例如：https://token-plan-cn.xiaomimimo.com/v1"
+                onChange={(event) => update("aiBaseUrl", event.target.value)}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                onClick={fetchModels}
+                disabled={!canFetchModels || loadingModels}
+                className="w-full sm:w-auto"
+              >
+                {loadingModels ? <Loader2 className="animate-spin" /> : <RefreshCw />}
+                获取模型列表
+              </Button>
+            </div>
+            <p className="text-xs leading-5 text-muted-foreground">
+              填写到 /v1 即可，系统会按 OpenAI 协议请求 /models 和
+              /chat/completions。小米 Mimo 默认使用 OpenAI 兼容协议。
+            </p>
           </div>
 
           <div className="space-y-2">

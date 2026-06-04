@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { getAiSettings, type AiSettings } from "@/lib/ai-settings";
+import { callOpenAiCompatibleChat } from "@/lib/ai-openai-compatible";
 import { requireAdminProfile } from "@/lib/auth";
 import { sanitizeHtml, sanitizeText } from "@/lib/security";
 
@@ -106,43 +107,6 @@ function articlePrompt(topic: string, categoryName: string | null | undefined, t
   ].join("\n");
 }
 
-async function callOpenAiCompatible(settings: AiSettings, prompt: string) {
-  const endpoint =
-    settings.aiProvider === "deepseek"
-      ? "https://api.deepseek.com/chat/completions"
-      : "https://api.openai.com/v1/chat/completions";
-  const fallbackModel = settings.aiProvider === "deepseek" ? "deepseek-chat" : "gpt-4.1-mini";
-
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${settings.aiApiKey}`
-    },
-    body: JSON.stringify({
-      model: settings.aiModel || fallbackModel,
-      messages: [
-        {
-          role: "system",
-          content: settings.aiSystemPrompt
-        },
-        {
-          role: "user",
-          content: prompt
-        }
-      ],
-      temperature: 0.7
-    })
-  });
-
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(data.error?.message || "AI 服务请求失败");
-  }
-
-  return String(data.choices?.[0]?.message?.content || "");
-}
-
 async function callClaude(settings: AiSettings, prompt: string) {
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -206,7 +170,20 @@ export async function POST(request: NextRequest) {
     const text =
       settings.aiProvider === "claude"
         ? await callClaude(settings, prompt)
-        : await callOpenAiCompatible(settings, prompt);
+        : await callOpenAiCompatibleChat({
+            settings,
+            messages: [
+              {
+                role: "system",
+                content: settings.aiSystemPrompt
+              },
+              {
+                role: "user",
+                content: prompt
+              }
+            ],
+            temperature: 0.7
+          });
     const json = extractJson(text);
     const parsed = json ? JSON.parse(json) : { content: text };
 
