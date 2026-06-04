@@ -17,7 +17,7 @@ const nav = [
   { href: "/admin/reports", label: "报告", icon: FileText },
   { href: "/admin/articles", label: "文章", icon: FileText },
   { href: "/admin/pricing", label: "定价", icon: Tags },
-  { href: "/admin/payments", label: "收款", icon: CreditCard },
+  { href: "/admin/payments", label: "收款通道", icon: CreditCard },
   { href: "/admin/orders", label: "订单", icon: ReceiptText },
   { href: "/admin/memberships", label: "会员", icon: Users },
   { href: "/admin/users", label: "用户", icon: Users },

@@ -3,9 +3,12 @@
 import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import {
+  AlertTriangle,
   CheckCircle2,
   Copy,
   CreditCard,
+  Eye,
+  EyeOff,
   Loader2,
   QrCode,
   Save,
@@ -30,7 +33,9 @@ type PaymentChannel = {
   id: "wechat" | "alipay";
   name: string;
   enabled: boolean;
-  mode: "production" | "disabled";
+  ready: boolean;
+  frontVisible: boolean;
+  mode: "production" | "mock" | "disabled";
   callbackUrl: string;
   editable: Record<string, string | boolean>;
   fields: PaymentField[];
@@ -61,18 +66,70 @@ const channelInputs = {
   ]
 };
 
+function channelStatus(channel: PaymentChannel) {
+  if (!channel.enabled) {
+    return {
+      badge: "前台已隐藏",
+      title: "此收款方式已关闭",
+      body: "关闭后，前端收银台不会显示这个收款方式，也不能创建这个方式的订单。",
+      Icon: EyeOff,
+      variant: "outline" as const
+    };
+  }
+
+  if (channel.frontVisible && channel.mode === "production") {
+    return {
+      badge: "前台显示中",
+      title: "正在使用真实收款",
+      body: "前端收银台会显示这个收款方式，用户提交后会调用真实支付网关。",
+      Icon: Eye,
+      variant: "soft" as const
+    };
+  }
+
+  if (channel.frontVisible && channel.mode === "mock") {
+    return {
+      badge: "模拟显示中",
+      title: "正在使用模拟支付",
+      body: "前端会显示这个收款方式，但当前走模拟支付。上线真实收款前请补齐真实商户参数。",
+      Icon: AlertTriangle,
+      variant: "soft" as const
+    };
+  }
+
+  return {
+    badge: "参数未完整",
+    title: "已打开，但前台暂不显示",
+    body: "当前没有完整真实收款参数，且未启用模拟支付。补齐参数后，前端收银台才会显示。",
+    Icon: AlertTriangle,
+    variant: "outline" as const
+  };
+}
+
 export function PaymentChannelPanel() {
   const [channels, setChannels] = useState<PaymentChannel[]>([]);
   const [storage, setStorage] = useState<"database" | "memory">("memory");
   const [saving, setSaving] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
 
   async function load() {
+    setLoading(true);
     const response = await fetch("/api/admin/payments", {
       credentials: "include",
       cache: "no-store"
     });
-    const data = (await response.json().catch(() => ({}))) as PaymentResponse;
+    const data = (await response.json().catch(() => ({}))) as Partial<PaymentResponse> & {
+      error?: string;
+    };
+
+    setLoading(false);
+    if (!response.ok) {
+      setMessage(data.error || "读取收款通道失败，请确认当前账号是管理员。");
+      setChannels([]);
+      return;
+    }
+
     setChannels(data.channels || []);
     setStorage(data.storage || "memory");
   }
@@ -116,18 +173,24 @@ export function PaymentChannelPanel() {
     const data = await response.json().catch(() => ({}));
 
     setSaving(null);
-    setMessage(response.ok ? "收款通道配置已保存" : data.error || "保存失败");
+    setMessage(response.ok ? "收款方式设置已保存，前台收银台会立即按开关显示。" : data.error || "保存失败");
     if (response.ok) await load();
   }
 
   return (
     <div className="max-w-full space-y-5 overflow-hidden">
       <div className="glass-panel rounded-lg p-4 text-sm leading-6 text-muted-foreground">
-        当前保存位置：
-        <span className="font-semibold text-foreground">
-          {storage === "database" ? "Supabase SystemConfig 数据库" : "本地预览内存"}
-        </span>
-        。生产环境连接 Supabase 后会持久化保存；本地预览内存会在服务重启后丢失。
+        <p className="font-medium text-foreground">后台位置：管理后台 → 收款通道</p>
+        <p className="mt-1">
+          每个收款方式都有独立开关。打开后才会出现在前端收银台；关闭后前台不可见，也不能用该方式创建订单。
+        </p>
+        <p className="mt-1">
+          当前保存位置：
+          <span className="font-semibold text-foreground">
+            {storage === "database" ? "Supabase 数据库" : "本地预览内存"}
+          </span>
+          。生产环境连接 Supabase 后会持久保存。
+        </p>
       </div>
 
       {message ? (
@@ -136,11 +199,19 @@ export function PaymentChannelPanel() {
         </div>
       ) : null}
 
+      {loading ? (
+        <div className="rounded-md border border-border bg-background/60 px-3 py-4 text-sm text-muted-foreground">
+          正在读取后台收款通道...
+        </div>
+      ) : null}
+
       <div className="grid gap-4 lg:grid-cols-2">
         {channels.map((channel) => {
           const Icon = channel.id === "wechat" ? QrCode : CreditCard;
           const complete = channel.fields.every((field) => field.configured);
           const inputs = channelInputs[channel.id];
+          const status = channelStatus(channel);
+          const StatusIcon = status.Icon;
 
           return (
             <Card key={channel.id} className="glass-panel min-w-0 overflow-hidden">
@@ -150,24 +221,29 @@ export function PaymentChannelPanel() {
                     <Icon className="mb-3 size-6 text-primary" />
                     <CardTitle>{channel.name}</CardTitle>
                   </div>
-                  <Badge
-                    variant={channel.enabled ? "soft" : "outline"}
-                    className="w-fit shrink-0"
-                  >
-                    {channel.enabled ? "生产收款" : "未启用"}
+                  <Badge variant={status.variant} className="w-fit shrink-0">
+                    {status.badge}
                   </Badge>
                 </div>
               </CardHeader>
               <CardContent className="space-y-5">
                 <div className="rounded-lg border border-border bg-background/60 p-4">
                   <div className="mb-2 flex items-center gap-2 font-medium">
+                    <StatusIcon className="size-4 text-primary" />
+                    {status.title}
+                  </div>
+                  <p className="text-sm leading-6 text-muted-foreground">{status.body}</p>
+                </div>
+
+                <div className="rounded-lg border border-border bg-background/60 p-4">
+                  <div className="mb-2 flex items-center gap-2 font-medium">
                     <ShieldCheck className="size-4 text-primary" />
-                    通道状态
+                    参数状态
                   </div>
                   <p className="text-sm leading-6 text-muted-foreground">
                     {complete
-                      ? "必要参数已配置。启用开关打开后会调用真实支付网关。"
-                      : "部分必要参数未配置。请先完善参数，确认无误后再启用真实收款。"}
+                      ? "真实收款必要参数已配置完整。"
+                      : "部分真实收款参数还没配置，真实支付会暂时不可用。"}
                   </p>
                 </div>
 
@@ -191,12 +267,13 @@ export function PaymentChannelPanel() {
                 </div>
 
                 <div className="rounded-md bg-muted/70 p-3">
-                  <p className="text-xs text-muted-foreground">回调地址</p>
+                  <p className="text-xs text-muted-foreground">支付回调地址</p>
                   <div className="mt-2 flex flex-col gap-3 text-sm sm:flex-row sm:items-center sm:justify-between">
                     <code className="min-w-0 break-all rounded bg-background/50 px-2 py-1">
                       {channel.callbackUrl}
                     </code>
                     <Button
+                      type="button"
                       variant="ghost"
                       size="icon"
                       title="复制回调地址"
@@ -211,9 +288,9 @@ export function PaymentChannelPanel() {
                 <form className="space-y-4" onSubmit={(event) => save(event, channel)}>
                   <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-background/60 px-3 py-3 text-sm font-medium">
                     <div>
-                      <p>启用真实收款</p>
+                      <p>前台显示该收款方式</p>
                       <p className="mt-1 text-xs font-normal text-muted-foreground">
-                        开启后会调用真实支付网关，参数未完整时请保持关闭。
+                        关闭后，前端收银台不会显示 {channel.name}。
                       </p>
                     </div>
                     <Switch
@@ -221,7 +298,7 @@ export function PaymentChannelPanel() {
                       onChange={(event) =>
                         updateChannel(channel.id, "enabled", event.target.checked)
                       }
-                      aria-label={`启用 ${channel.name} 真实收款`}
+                      aria-label={`前台显示 ${channel.name}`}
                     />
                   </div>
 
@@ -258,11 +335,11 @@ export function PaymentChannelPanel() {
                   <div className="grid gap-2 sm:grid-cols-3">
                     <Button disabled={saving === channel.id} className="w-full">
                       {saving === channel.id ? <Loader2 className="animate-spin" /> : <Save />}
-                      保存配置
+                      保存设置
                     </Button>
                     <Button asChild variant="glass" className="w-full">
                       <Link href={`/checkout?plan=monthly&provider=${channel.id}`}>
-                        创建收款订单
+                        前台预览
                       </Link>
                     </Button>
                     <Button asChild variant="outline" className="w-full">

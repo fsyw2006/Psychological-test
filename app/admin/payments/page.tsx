@@ -15,7 +15,7 @@ export default async function AdminPaymentsPage() {
       <div className="mb-6 max-w-2xl">
         <h2 className="text-2xl font-semibold sm:text-3xl">收款通道</h2>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">
-          这里可以填写微信支付和支付宝的生产收款参数。私钥和 API Key 会由服务端保存，页面只显示脱敏状态；留空密钥字段表示不修改原值。
+          这里可以控制微信支付和支付宝是否出现在前端收银台。关闭某个收款方式后，前端不会显示，也不能创建该方式的订单；密钥字段留空表示不修改原值。
         </p>
       </div>
       <PaymentChannelPanel />

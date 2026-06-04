@@ -4,6 +4,7 @@ import { hasSupabaseEnv } from "@/lib/env";
 import { hasServiceRoleEnv } from "@/lib/env";
 import {
   getPaymentConfig,
+  isPaymentChannelProductionReady,
   maskSecret,
   savePaymentConfig
 } from "@/lib/payments/config";
@@ -14,6 +15,9 @@ export async function GET() {
     return NextResponse.json({ error: "无权访问" }, { status: 403 });
   }
   const config = await getPaymentConfig();
+  const mockEnabled = process.env.MOCK_PAYMENT_ENABLED === "true";
+  const wechatReady = isPaymentChannelProductionReady(config, "wechat");
+  const alipayReady = isPaymentChannelProductionReady(config, "alipay");
 
   return NextResponse.json({
     canPersist: true,
@@ -23,7 +27,15 @@ export async function GET() {
         id: "wechat",
         name: "微信支付",
         enabled: config.wechat.enabled,
-        mode: config.wechat.enabled ? "production" : "disabled",
+        ready: wechatReady,
+        frontVisible: Boolean(config.wechat.enabled && (wechatReady || mockEnabled)),
+        mode: config.wechat.enabled
+          ? wechatReady
+            ? "production"
+            : mockEnabled
+              ? "mock"
+              : "disabled"
+          : "disabled",
         callbackUrl: config.wechat.notifyUrl,
         editable: {
           enabled: config.wechat.enabled,
@@ -48,7 +60,15 @@ export async function GET() {
         id: "alipay",
         name: "支付宝",
         enabled: config.alipay.enabled,
-        mode: config.alipay.enabled ? "production" : "disabled",
+        ready: alipayReady,
+        frontVisible: Boolean(config.alipay.enabled && (alipayReady || mockEnabled)),
+        mode: config.alipay.enabled
+          ? alipayReady
+            ? "production"
+            : mockEnabled
+              ? "mock"
+              : "disabled"
+          : "disabled",
         callbackUrl: config.alipay.notifyUrl,
         editable: {
           enabled: config.alipay.enabled,

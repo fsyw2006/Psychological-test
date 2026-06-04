@@ -194,7 +194,10 @@ export async function getPaymentConfig() {
 }
 
 export function hasProductionPaymentChannel(config: PaymentRuntimeConfig) {
-  return Boolean(config.wechat.enabled || config.alipay.enabled);
+  return (
+    isPaymentChannelProductionReady(config, "wechat") ||
+    isPaymentChannelProductionReady(config, "alipay")
+  );
 }
 
 export function isPaymentChannelEnabled(
@@ -204,14 +207,42 @@ export function isPaymentChannelEnabled(
   return channel === "wechat" ? Boolean(config.wechat.enabled) : Boolean(config.alipay.enabled);
 }
 
+export function isPaymentChannelProductionReady(
+  config: PaymentRuntimeConfig,
+  channel: PaymentChannelId
+) {
+  if (!isPaymentChannelEnabled(config, channel)) return false;
+
+  if (channel === "wechat") {
+    return Boolean(
+      config.wechat.appid &&
+        config.wechat.mchid &&
+        config.wechat.apiV3Key &&
+        config.wechat.serialNo &&
+        config.wechat.privateKey &&
+        config.wechat.platformPublicKey &&
+        config.wechat.notifyUrl
+    );
+  }
+
+  return Boolean(
+    config.alipay.appId &&
+      config.alipay.privateKey &&
+      config.alipay.publicKey &&
+      config.alipay.notifyUrl &&
+      config.alipay.returnUrl &&
+      config.alipay.gateway
+  );
+}
+
 export function shouldUseMockPayment(
   config: PaymentRuntimeConfig,
   channel: PaymentChannelId
 ) {
   return (
     process.env.MOCK_PAYMENT_ENABLED === "true" &&
-    !hasProductionPaymentChannel(config) &&
-    !isPaymentChannelEnabled(config, channel)
+    isPaymentChannelEnabled(config, channel) &&
+    !isPaymentChannelProductionReady(config, channel)
   );
 }
 
@@ -220,21 +251,22 @@ export async function getPublicPaymentChannels() {
   const productionChannels: PublicPaymentChannel[] = [];
 
   if (config.wechat.enabled) {
-    productionChannels.push({ id: "wechat", name: "微信支付", mode: "production" });
+    if (isPaymentChannelProductionReady(config, "wechat")) {
+      productionChannels.push({ id: "wechat", name: "微信支付", mode: "production" });
+    } else if (process.env.MOCK_PAYMENT_ENABLED === "true") {
+      productionChannels.push({ id: "wechat", name: "微信支付", mode: "mock" });
+    }
   }
 
   if (config.alipay.enabled) {
-    productionChannels.push({ id: "alipay", name: "支付宝支付", mode: "production" });
+    if (isPaymentChannelProductionReady(config, "alipay")) {
+      productionChannels.push({ id: "alipay", name: "支付宝支付", mode: "production" });
+    } else if (process.env.MOCK_PAYMENT_ENABLED === "true") {
+      productionChannels.push({ id: "alipay", name: "支付宝支付", mode: "mock" });
+    }
   }
 
   if (productionChannels.length) return productionChannels;
-
-  if (process.env.MOCK_PAYMENT_ENABLED === "true") {
-    return [
-      { id: "wechat", name: "微信支付", mode: "mock" },
-      { id: "alipay", name: "支付宝支付", mode: "mock" }
-    ] satisfies PublicPaymentChannel[];
-  }
 
   return [] satisfies PublicPaymentChannel[];
 }
