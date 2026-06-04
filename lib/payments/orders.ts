@@ -250,24 +250,71 @@ async function applyPaidOrderEntitlements({
   if (order.product_type === "MEMBERSHIP_MONTHLY" || order.product_type === "MEMBERSHIP_YEARLY") {
     const { data: existingMembership } = await supabase
       .from("memberships")
-      .select("id")
+      .select("id,status")
       .eq("order_id", order.id)
       .maybeSingle();
 
-    if (!existingMembership) {
-      const isMonthly = order.product_type === "MEMBERSHIP_MONTHLY";
-      const { error } = await supabase.from("memberships").insert({
+    if (existingMembership) {
+      if (existingMembership.status === "ACTIVE") {
+        await supabase
+          .from("memberships")
+          .update({ status: "EXPIRED" })
+          .eq("user_id", order.user_id)
+          .eq("status", "ACTIVE")
+          .neq("id", existingMembership.id);
+      }
+      return;
+    }
+
+    const isMonthly = order.product_type === "MEMBERSHIP_MONTHLY";
+    const { data: currentMembership } = await supabase
+      .from("memberships")
+      .select("id,ends_at")
+      .eq("user_id", order.user_id)
+      .eq("status", "ACTIVE")
+      .or(`ends_at.is.null,ends_at.gt.${now.toISOString()}`)
+      .order("ends_at", { ascending: false, nullsFirst: true })
+      .order("starts_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (currentMembership && !currentMembership.ends_at) {
+      return;
+    }
+
+    const currentEndsAt = currentMembership?.ends_at
+      ? new Date(currentMembership.ends_at)
+      : null;
+    const baseDate =
+      currentEndsAt && currentEndsAt.getTime() > now.getTime() ? currentEndsAt : now;
+    const endsAt = isMonthly ? addMonths(baseDate, 1) : addYears(baseDate, 1);
+
+    const { data: newMembership, error } = await supabase
+      .from("memberships")
+      .insert({
         user_id: order.user_id,
         plan: isMonthly ? "MONTHLY" : "YEARLY",
         status: "ACTIVE",
         starts_at: now.toISOString(),
-        ends_at: isMonthly ? addMonths(now, 1).toISOString() : addYears(now, 1).toISOString(),
+        ends_at: endsAt.toISOString(),
         order_id: order.id
-      });
+      })
+      .select("id")
+      .single();
 
-      if (error) {
-        throw new Error(error.message || "Failed to activate membership.");
-      }
+    if (error || !newMembership) {
+      throw new Error(error?.message || "Failed to activate membership.");
+    }
+
+    const { error: expireError } = await supabase
+      .from("memberships")
+      .update({ status: "EXPIRED" })
+      .eq("user_id", order.user_id)
+      .eq("status", "ACTIVE")
+      .neq("id", newMembership.id);
+
+    if (expireError) {
+      console.error("Failed to expire older memberships.", expireError);
     }
   }
 

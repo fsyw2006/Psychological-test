@@ -9,6 +9,9 @@ export const metadata: Metadata = {
   description: "情绪管理、人际关系、职场成长与自我提升文章。"
 };
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export default async function ArticlesPage({
   searchParams
 }: {

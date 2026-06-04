@@ -5,6 +5,9 @@ import { Badge } from "@/components/ui/badge";
 import { getArticleBySlug } from "@/lib/content";
 import { formatDate } from "@/lib/utils";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export async function generateMetadata({
   params
 }: {

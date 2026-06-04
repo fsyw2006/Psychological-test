@@ -136,8 +136,9 @@ export async function saveAiSettings(input: AiSettingsInput) {
   });
 
   if (!hasServiceRoleEnv()) {
-    memoryAiSettings = next;
-    return next;
+    throw new Error(
+      "缺少 SUPABASE_SERVICE_ROLE_KEY，AI 设置无法保存到 Supabase 数据库。"
+    );
   }
 
   const supabase = createSupabaseServiceClient();

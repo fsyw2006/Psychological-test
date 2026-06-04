@@ -13,6 +13,11 @@ export type AppProfile = {
   avatar_url?: string | null;
   role: "USER" | "ADMIN";
 };
+
+function isAdminEmail(email: string) {
+  return getAdminEmails().includes(email.toLowerCase());
+}
+
 export async function getCurrentProfile() {
   try {
     if (!hasSupabaseEnv()) return null;
@@ -32,12 +37,30 @@ export async function getCurrentProfile() {
         email: user.email,
         name: user.user_metadata?.name || user.email.split("@")[0],
         avatar_url: user.user_metadata?.avatar_url || null,
-        role: getAdminEmails().includes(user.email.toLowerCase()) ? "ADMIN" : "USER"
+        role: isAdminEmail(user.email) ? "ADMIN" : "USER"
       } satisfies AppProfile;
     }
 
     const service = createSupabaseServiceClient();
-    const role = getAdminEmails().includes(user.email.toLowerCase()) ? "ADMIN" : "USER";
+    const { data: existingProfile } = await service
+      .from("users")
+      .select("id, role")
+      .eq("auth_user_id", user.id)
+      .maybeSingle();
+
+    let alreadyAdmin = existingProfile?.role === "ADMIN";
+
+    if (!alreadyAdmin && existingProfile?.id) {
+      const { data: adminRow } = await service
+        .from("admins")
+        .select("id")
+        .eq("user_id", existingProfile.id)
+        .maybeSingle();
+
+      alreadyAdmin = Boolean(adminRow);
+    }
+
+    const role = alreadyAdmin || isAdminEmail(user.email) ? "ADMIN" : "USER";
     const { data: profile, error: profileError } = await service
       .from("users")
       .upsert(
@@ -56,12 +79,26 @@ export async function getCurrentProfile() {
       .single();
 
     if (profileError || !profile) return null;
+
+    if (profile.role === "ADMIN") {
+      await service.from("admins").upsert(
+        {
+          user_id: profile.id,
+          permissions: ["*"],
+          active: true
+        },
+        {
+          onConflict: "user_id"
+        }
+      );
+    }
+
     return profile as AppProfile;
   } catch (error) {
     console.error("Failed to read current Supabase profile", error);
     return null;
   }
-}  
+}
 export async function requireProfile() {
   const profile = await getCurrentProfile();
   if (!profile) redirect("/auth/login");

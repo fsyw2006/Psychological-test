@@ -109,7 +109,10 @@ export function AiSettingsForm({
 
     setSaving(false);
     setMessage(response.ok ? "AI 功能设置已保存" : data.error || "保存失败");
-    if (response.ok) setSettings(data.settings);
+    if (response.ok) {
+      setSettings(data.settings);
+      window.dispatchEvent(new Event("soul-house:ai-settings-updated"));
+    }
   }
 
   return (

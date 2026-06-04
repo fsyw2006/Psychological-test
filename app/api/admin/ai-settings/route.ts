@@ -26,6 +26,16 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "无权访问" }, { status: 403 });
   }
 
+  if (!hasServiceRoleEnv()) {
+    return NextResponse.json(
+      {
+        error:
+          "AI 设置保存失败：Cloudflare 缺少 SUPABASE_SERVICE_ROLE_KEY，无法写入 Supabase 数据库。"
+      },
+      { status: 503 }
+    );
+  }
+
   try {
     const body = await request.json();
     const settings = await saveAiSettings(body);

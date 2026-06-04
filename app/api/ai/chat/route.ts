@@ -50,6 +50,9 @@ export async function POST(request: NextRequest) {
         .eq("user_id", profile.id)
         .eq("status", "ACTIVE")
         .or(`ends_at.is.null,ends_at.gt.${new Date().toISOString()}`)
+        .order("ends_at", { ascending: false, nullsFirst: true })
+        .order("starts_at", { ascending: false })
+        .limit(1)
         .maybeSingle(),
       supabase
         .from("ai_usage_records")

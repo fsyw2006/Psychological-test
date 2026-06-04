@@ -52,15 +52,6 @@ export function SiteHeader({ initialUser = null }: { initialUser?: HeaderUser | 
   useEffect(() => {
     let alive = true;
 
-    fetch("/api/ai/status", { cache: "no-store" })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data: { aiChatEnabled?: boolean } | null) => {
-        if (alive) setAiChatEnabled(Boolean(data?.aiChatEnabled));
-      })
-      .catch(() => {
-        if (alive) setAiChatEnabled(false);
-      });
-
     fetch("/api/auth/me", { cache: "no-store" })
       .then((res) => (res.ok ? res.json() : null))
       .then((data: { user?: HeaderUser | null } | null) => {
@@ -102,6 +93,29 @@ export function SiteHeader({ initialUser = null }: { initialUser?: HeaderUser | 
       };
     }
   }, [initialUser]);
+
+  useEffect(() => {
+    let alive = true;
+
+    const refreshAiStatus = () => {
+      fetch("/api/ai/status", { cache: "no-store" })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data: { aiChatEnabled?: boolean } | null) => {
+          if (alive) setAiChatEnabled(Boolean(data?.aiChatEnabled));
+        })
+        .catch(() => {
+          if (alive) setAiChatEnabled(false);
+        });
+    };
+
+    refreshAiStatus();
+    window.addEventListener("soul-house:ai-settings-updated", refreshAiStatus);
+
+    return () => {
+      alive = false;
+      window.removeEventListener("soul-house:ai-settings-updated", refreshAiStatus);
+    };
+  }, [pathname]);
 
   async function signOut() {
     const supabase = createSupabaseBrowserClient();

@@ -60,7 +60,9 @@ export async function GET(
         .select("id")
         .eq("user_id", data.user_id)
         .eq("status", "ACTIVE")
-        .gte("ends_at", now)
+        .or(`ends_at.is.null,ends_at.gt.${now}`)
+        .order("ends_at", { ascending: false, nullsFirst: true })
+        .order("starts_at", { ascending: false })
         .limit(1)
         .maybeSingle()
     ]);

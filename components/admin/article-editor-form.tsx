@@ -1,15 +1,21 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 import { Bot, Loader2, Send, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+
+type ArticleCategory = {
+  id: string;
+  name: string;
+};
 
 type ArticleDraft = {
   title: string;
-  slug: string;
+  slug?: string;
   excerpt: string;
   content: string;
   tags: string[];
@@ -17,29 +23,28 @@ type ArticleDraft = {
 
 function splitTags(value: string) {
   return value
-    .split(/[,，]/)
+    .split(/[,，、\n]/)
     .map((tag) => tag.trim())
     .filter(Boolean);
 }
 
-export function ArticleEditorForm({
-  categoryId,
-  categoryName
-}: {
-  categoryId?: string;
-  categoryName?: string;
-}) {
+export function ArticleEditorForm({ categories = [] }: { categories?: ArticleCategory[] }) {
+  const defaultCategoryId = categories[0]?.id || "";
   const [title, setTitle] = useState("");
-  const [slug, setSlug] = useState("");
   const [tags, setTags] = useState("");
   const [excerpt, setExcerpt] = useState("");
   const [content, setContent] = useState("");
-  const [categoryValue, setCategoryValue] = useState(categoryId || "");
+  const [categoryValue, setCategoryValue] = useState(defaultCategoryId);
   const [aiTopic, setAiTopic] = useState("");
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [message, setMessage] = useState("");
   const [aiMessage, setAiMessage] = useState("");
+
+  const selectedCategory = useMemo(
+    () => categories.find((category) => category.id === categoryValue) || categories[0],
+    [categories, categoryValue]
+  );
 
   async function generateDraft() {
     const topic = (aiTopic || title).trim();
@@ -58,7 +63,7 @@ export function ArticleEditorForm({
       cache: "no-store",
       body: JSON.stringify({
         topic,
-        categoryName,
+        categoryName: selectedCategory?.name,
         tags: splitTags(tags)
       })
     });
@@ -72,17 +77,22 @@ export function ArticleEditorForm({
 
     const draft = data.draft as ArticleDraft;
     setTitle(draft.title || "");
-    setSlug(draft.slug || "");
     setExcerpt(draft.excerpt || "");
     setContent(draft.content || "");
-    setTags((draft.tags || []).join(","));
+    setTags((draft.tags || []).join("，"));
     setAiMessage("AI 草稿已生成，请检查后再发布。");
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setLoading(true);
     setMessage("");
+
+    if (!categoryValue) {
+      setMessage("请先选择文章分类。");
+      return;
+    }
+
+    setLoading(true);
 
     const response = await fetch("/api/admin/articles", {
       method: "POST",
@@ -91,16 +101,15 @@ export function ArticleEditorForm({
       cache: "no-store",
       body: JSON.stringify({
         title,
-        slug,
         excerpt,
         content,
-        categoryId: categoryId || categoryValue,
+        categoryId: categoryValue,
         tags: splitTags(tags)
       })
     });
     const data = await response.json().catch(() => ({}));
     setLoading(false);
-    setMessage(response.ok ? "文章已发布" : data.error || "发布失败");
+    setMessage(response.ok ? "文章已发布，前台文章列表会同步更新。" : data.error || "发布失败");
   }
 
   return (
@@ -146,28 +155,29 @@ export function ArticleEditorForm({
             required
           />
         </div>
+
         <div className="grid gap-2">
-          <Label htmlFor="slug">Slug</Label>
-          <Input
-            id="slug"
-            name="slug"
-            value={slug}
-            onChange={(event) => setSlug(event.target.value)}
+          <Label htmlFor="categoryId">分类</Label>
+          <Select
+            id="categoryId"
+            name="categoryId"
+            value={categoryValue}
+            onChange={(event) => setCategoryValue(event.target.value)}
+            disabled={!categories.length}
             required
-          />
+          >
+            {categories.length ? (
+              categories.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.name}
+                </option>
+              ))
+            ) : (
+              <option value="">未找到文章分类</option>
+            )}
+          </Select>
         </div>
-        {!categoryId ? (
-          <div className="grid gap-2">
-            <Label htmlFor="categoryId">分类 ID</Label>
-            <Input
-              id="categoryId"
-              name="categoryId"
-              value={categoryValue}
-              onChange={(event) => setCategoryValue(event.target.value)}
-              required
-            />
-          </div>
-        ) : null}
+
         <div className="grid gap-2">
           <Label htmlFor="tags">标签</Label>
           <Input
@@ -175,7 +185,7 @@ export function ArticleEditorForm({
             name="tags"
             value={tags}
             onChange={(event) => setTags(event.target.value)}
-            placeholder="情绪,成长"
+            placeholder="情绪管理，成长"
           />
         </div>
         <div className="grid gap-2">
@@ -200,7 +210,7 @@ export function ArticleEditorForm({
           />
         </div>
         {message ? <p className="text-sm text-muted-foreground">{message}</p> : null}
-        <Button disabled={loading} className="w-full sm:w-auto">
+        <Button disabled={loading || !categories.length} className="w-full sm:w-auto">
           {loading ? <Loader2 className="animate-spin" /> : <Send />}
           发布文章
         </Button>

@@ -14,8 +14,7 @@ export default async function AdminArticlesPage() {
   const profile = await getCurrentProfile();
   if (hasSupabaseEnv() && profile?.role !== "ADMIN") redirect("/account");
   const articles = await getArticles();
-  let categoryId: string | undefined;
-  let categoryName: string | undefined;
+  let categories: { id: string; name: string }[] = [];
 
   if (hasServiceRoleEnv()) {
     const supabase = createSupabaseServiceClient();
@@ -23,10 +22,9 @@ export default async function AdminArticlesPage() {
       .from("categories")
       .select("id, name")
       .eq("type", "ARTICLE")
-      .limit(1)
-      .maybeSingle();
-    categoryId = data?.id;
-    categoryName = data?.name || undefined;
+      .order("sort_order", { ascending: true })
+      .order("created_at", { ascending: true });
+    categories = data || [];
   }
 
   return (
@@ -36,7 +34,7 @@ export default async function AdminArticlesPage() {
           <CardTitle>发布文章</CardTitle>
         </CardHeader>
         <CardContent>
-          <ArticleEditorForm categoryId={categoryId} categoryName={categoryName} />
+          <ArticleEditorForm categories={categories} />
         </CardContent>
       </Card>
       <div className="grid min-w-0 gap-4">

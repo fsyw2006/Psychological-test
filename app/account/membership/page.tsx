@@ -22,7 +22,9 @@ export default async function MyMembershipPage() {
         .select("*")
         .eq("user_id", profile.id)
         .eq("status", "ACTIVE")
-        .order("ends_at", { ascending: false })
+        .or(`ends_at.is.null,ends_at.gt.${new Date().toISOString()}`)
+        .order("ends_at", { ascending: false, nullsFirst: true })
+        .order("starts_at", { ascending: false })
         .limit(1)
         .maybeSingle();
       membership = data;
