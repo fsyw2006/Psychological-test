@@ -2,15 +2,83 @@ import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { getCurrentProfile } from "@/lib/auth";
 import { getAiSettings } from "@/lib/ai-settings";
-import { callOpenAiCompatibleChat } from "@/lib/ai-openai-compatible";
+import {
+  callOpenAiCompatibleChat,
+  type AiChatMessage
+} from "@/lib/ai-openai-compatible";
 import { hasServiceRoleEnv, hasSupabaseEnv } from "@/lib/env";
-import { rateLimited } from "@/lib/security";
+import { rateLimited, sanitizeText } from "@/lib/security";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 
 const schema = z.object({
   conversationId: z.string().optional().nullable(),
   message: z.string().min(1).max(2000)
 });
+
+type SupabaseServiceClient = ReturnType<typeof createSupabaseServiceClient>;
+
+type StoredAiMessage = {
+  role: "user" | "assistant" | string;
+  content: string;
+};
+
+function conversationTitle(message: string) {
+  return sanitizeText(message, 28) || "新的 AI 聊天";
+}
+
+async function getOrCreateConversation({
+  supabase,
+  userId,
+  conversationId,
+  message
+}: {
+  supabase: SupabaseServiceClient;
+  userId: string;
+  conversationId?: string | null;
+  message: string;
+}) {
+  if (conversationId) {
+    const { data } = await supabase
+      .from("ai_conversations")
+      .select("id")
+      .eq("id", conversationId)
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (data?.id) return data.id as string;
+  }
+
+  const { data, error } = await supabase
+    .from("ai_conversations")
+    .insert({
+      user_id: userId,
+      title: conversationTitle(message)
+    })
+    .select("id")
+    .single();
+
+  if (error || !data?.id) throw new Error(error?.message || "创建 AI 会话失败");
+  return data.id as string;
+}
+
+async function loadRecentMessages(supabase: SupabaseServiceClient, conversationId: string) {
+  const { data } = await supabase
+    .from("ai_messages")
+    .select("role,content,created_at")
+    .eq("conversation_id", conversationId)
+    .order("created_at", { ascending: false })
+    .limit(10);
+
+  return ((data || []) as StoredAiMessage[])
+    .reverse()
+    .filter((message) => message.role === "user" || message.role === "assistant")
+    .map(
+      (message): AiChatMessage => ({
+        role: message.role as "user" | "assistant",
+        content: message.content
+      })
+    );
+}
 
 export async function POST(request: NextRequest) {
   const limited = rateLimited(request, "ai-chat");
@@ -37,6 +105,12 @@ export async function POST(request: NextRequest) {
 
   let isMember = false;
   let usedToday = 0;
+  let conversationId: string | null = null;
+  let recentMessages: AiChatMessage[] = [];
+  const userMessage = sanitizeText(body.data.message, 2000);
+  if (!userMessage) {
+    return NextResponse.json({ error: "聊天内容不能为空" }, { status: 400 });
+  }
 
   if (profile && hasServiceRoleEnv()) {
     const supabase = createSupabaseServiceClient();
@@ -63,6 +137,18 @@ export async function POST(request: NextRequest) {
 
     isMember = Boolean(membership);
     usedToday = count || 0;
+
+    try {
+      conversationId = await getOrCreateConversation({
+        supabase,
+        userId: profile.id,
+        conversationId: body.data.conversationId,
+        message: userMessage
+      });
+      recentMessages = await loadRecentMessages(supabase, conversationId);
+    } catch (error) {
+      console.error("Failed to prepare AI conversation.", error);
+    }
   }
 
   const limit = isMember ? settings.memberChatLimit : settings.freeChatLimit;
@@ -71,7 +157,7 @@ export async function POST(request: NextRequest) {
   }
 
   let reply =
-    "我已收到你的内容。当前 AI 聊天处于测试模式，正式服务开启后将提供更完整的心理陪伴体验。";
+    "我已收到你的内容。你可以继续把当下的感受、发生的事情和你希望被支持的地方告诉我，我会尽量用温和、清晰的方式陪你梳理。";
 
   if (settings.aiProvider === "claude") {
     return NextResponse.json(
@@ -89,9 +175,10 @@ export async function POST(request: NextRequest) {
             role: "system",
             content: settings.aiSystemPrompt
           },
+          ...recentMessages,
           {
             role: "user",
-            content: body.data.message
+            content: userMessage
           }
         ],
         temperature: 0.6
@@ -106,18 +193,44 @@ export async function POST(request: NextRequest) {
 
   if (profile && hasServiceRoleEnv()) {
     const supabase = createSupabaseServiceClient();
-    await supabase.from("ai_usage_records").insert({
-      user_id: profile.id,
-      provider: settings.aiProvider,
-      model: settings.aiModel,
-      token_input: 0,
-      token_output: 0,
-      total_cost: 0
-    });
+    await Promise.all([
+      conversationId
+        ? supabase.from("ai_messages").insert([
+            {
+              conversation_id: conversationId,
+              role: "user",
+              content: userMessage,
+              token_count: 0
+            },
+            {
+              conversation_id: conversationId,
+              role: "assistant",
+              content: reply,
+              token_count: 0
+            }
+          ])
+        : Promise.resolve(),
+      conversationId
+        ? supabase
+            .from("ai_conversations")
+            .update({ updated_at: new Date().toISOString() })
+            .eq("id", conversationId)
+            .eq("user_id", profile.id)
+        : Promise.resolve(),
+      supabase.from("ai_usage_records").insert({
+        user_id: profile.id,
+        provider: settings.aiProvider,
+        model: settings.aiModel,
+        token_input: 0,
+        token_output: 0,
+        total_cost: 0
+      })
+    ]);
   }
 
   return NextResponse.json({
     reply,
+    conversationId,
     provider: settings.aiProvider,
     model: settings.aiModel
   });
