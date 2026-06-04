@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getCurrentProfile } from "@/lib/auth";
 import { getAiSettings } from "@/lib/ai-settings";
-import { generatePersonalizedReportDetailed } from "@/lib/ai-report";
+import { aiRetryCooldownSeconds, generatePersonalizedReportDetailed } from "@/lib/ai-report";
 import { getAssessmentBySlug } from "@/lib/content";
 import { hasServiceRoleEnv } from "@/lib/env";
 import { scoreAssessment } from "@/lib/scoring";
@@ -77,6 +77,45 @@ export async function POST(
     createdAt: data.created_at
   };
   const settings = await getAiSettings();
+  const currentAdvanced = safeJson<ReportTemplate>(
+    data.advanced_report,
+    fallbackAdvanced(data.summary || "")
+  );
+  const currentAiStatus = currentAdvanced.aiStatus;
+
+  if (
+    currentAdvanced.generatedByAi ||
+    currentAdvanced.source === "ai" ||
+    currentAiStatus?.status === "generated"
+  ) {
+    return NextResponse.json(
+      { error: "这份报告已经成功生成过 AI 报告，不能再次生成。" },
+      { status: 409 }
+    );
+  }
+
+  const attemptedAt = currentAiStatus?.attemptedAt
+    ? Date.parse(currentAiStatus.attemptedAt)
+    : 0;
+  const cooldownMs = aiRetryCooldownSeconds() * 1000;
+
+  if (attemptedAt && Date.now() - attemptedAt < cooldownMs) {
+    const retryAfter = Math.max(1, Math.ceil((cooldownMs - (Date.now() - attemptedAt)) / 1000));
+
+    return NextResponse.json(
+      {
+        error: `AI 报告刚刚生成失败，请等待 ${retryAfter} 秒后再试。`,
+        retryAfter
+      },
+      {
+        status: 429,
+        headers: {
+          "Retry-After": String(retryAfter)
+        }
+      }
+    );
+  }
+
   const generation = await generatePersonalizedReportDetailed({
     settings,
     test,
@@ -90,10 +129,6 @@ export async function POST(
     model: generation.model,
     attemptedAt: generation.attemptedAt
   };
-  const currentAdvanced = safeJson<ReportTemplate>(
-    data.advanced_report,
-    fallbackAdvanced(data.summary || "")
-  );
   const nextAdvanced =
     generation.status === "generated"
       ? {

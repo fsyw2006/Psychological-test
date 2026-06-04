@@ -18,6 +18,8 @@ import { Progress } from "@/components/ui/progress";
 import { ResultShareCard } from "@/components/reports/result-share-card";
 import type { AssessmentResult } from "@/lib/types";
 
+const AI_RETRY_COOLDOWN_SECONDS = 30;
+
 function ListBlock({
   title,
   items,
@@ -53,6 +55,7 @@ export function ResultReport({
   const [loading, setLoading] = useState(!initialResult);
   const [regeneratingAi, setRegeneratingAi] = useState(false);
   const [aiMessage, setAiMessage] = useState("");
+  const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
     if (initialResult) return;
@@ -79,6 +82,11 @@ export function ResultReport({
       mounted = false;
     };
   }, [initialResult, resultId]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   async function regenerateAiReport() {
     setRegeneratingAi(true);
@@ -127,6 +135,14 @@ export function ResultReport({
     );
   const aiStatus = result.advancedAiStatus || result.advanced.aiStatus;
   const aiFailed = result.advancedSource !== "ai" && aiStatus?.status === "failed";
+  const attemptedAt = aiStatus?.attemptedAt ? Date.parse(aiStatus.attemptedAt) : 0;
+  const retrySecondsLeft =
+    result.advancedSource !== "ai" && attemptedAt
+      ? Math.max(
+          0,
+          Math.ceil((attemptedAt + AI_RETRY_COOLDOWN_SECONDS * 1000 - now) / 1000)
+        )
+      : 0;
   const advancedBadgeText =
     result.advancedSource === "ai" ? "AI 个性化" : aiFailed ? "AI未成功" : "模板报告";
 
@@ -209,11 +225,13 @@ export function ResultReport({
                     variant="outline"
                     size="sm"
                     onClick={regenerateAiReport}
-                    disabled={regeneratingAi}
+                    disabled={regeneratingAi || retrySecondsLeft > 0}
                     className="w-full sm:w-auto"
                   >
                     {regeneratingAi ? <RefreshCw className="animate-spin" /> : <Sparkles />}
-                    重新生成 AI 报告
+                    {retrySecondsLeft > 0
+                      ? `${retrySecondsLeft} 秒后可重试`
+                      : "重新生成 AI 报告"}
                   </Button>
                   {aiMessage ? (
                     <p className="text-sm leading-6 text-muted-foreground">{aiMessage}</p>

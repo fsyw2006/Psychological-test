@@ -18,6 +18,7 @@ type AiReportInput = {
 const REPORT_AI_TIMEOUT_MS = 45000;
 const REPORT_AI_MAX_TOKENS = 1200;
 const REPORT_AI_MAX_QUESTIONS = 30;
+const REPORT_AI_RETRY_COOLDOWN_SECONDS = 30;
 
 export type AiReportGeneration =
   | {
@@ -114,19 +115,79 @@ function answerSummary(test: Assessment, answers: AssessmentAnswerInput[]) {
   });
 }
 
-function extractJson(text: string) {
-  const trimmed = text.trim();
-  if (trimmed.startsWith("{") && trimmed.endsWith("}")) return trimmed;
-  const match = trimmed.match(/\{[\s\S]*\}/);
-  return match?.[0] || "";
+function stripCodeFence(text: string) {
+  return text
+    .trim()
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+}
+
+function balancedJsonObject(text: string) {
+  const source = stripCodeFence(text);
+  const start = source.indexOf("{");
+  if (start < 0) return "";
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let index = start; index < source.length; index += 1) {
+    const char = source[index];
+
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === "\\") {
+        escaped = true;
+      } else if (char === "\"") {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (char === "\"") {
+      inString = true;
+    } else if (char === "{") {
+      depth += 1;
+    } else if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+
+  return "";
+}
+
+function parseAiJson(text: string) {
+  const candidates = Array.from(
+    new Set(
+      [text.trim(), stripCodeFence(text), balancedJsonObject(text)]
+        .filter(Boolean)
+        .flatMap((candidate) => [
+          candidate,
+          candidate.replace(/,\s*([}\]])/g, "$1")
+        ])
+    )
+  );
+
+  for (const candidate of candidates) {
+    try {
+      return JSON.parse(candidate) as Partial<ReportTemplate>;
+    } catch {
+      // Try the next candidate.
+    }
+  }
+
+  return null;
 }
 
 function buildPrompt({ test, answers, result }: Omit<AiReportInput, "settings">) {
   return [
     "你是心灵小屋 Soul House 的心理测评报告助手。请根据用户的测评结果和答题选择，生成个性化高级报告。",
     "必须遵守：不能诊断疾病，不能替代医疗建议，不能给出绝对化人格定论；表达要温和、具体、可执行。",
-    "请只返回严格 JSON，不要 Markdown，不要代码块。",
-    "JSON 字段必须包含：title、summary、traits、strengths、risks、growth、careers、relationships。",
+    "请只返回一个严格 JSON 对象，不要 Markdown，不要代码块，不要解释文字，不要在 JSON 前后添加任何字符。",
+    "JSON 字段必须且只能包含：title、summary、traits、strengths、risks、growth、careers、relationships。",
     "traits、strengths、risks、growth、careers、relationships 都是字符串数组，每个数组 2-4 条。",
     `测评名称：${test.title}`,
     `测评简介：${test.description}`,
@@ -135,6 +196,43 @@ function buildPrompt({ test, answers, result }: Omit<AiReportInput, "settings">)
     `维度分：${JSON.stringify(result.dimensions)}`,
     `用户答题：${JSON.stringify(answerSummary(test, answers))}`
   ].join("\n");
+}
+
+async function callReportAi(settings: AiSettings, prompt: string) {
+  const common = {
+    settings,
+    messages: [
+      {
+        role: "system" as const,
+        content: settings.aiSystemPrompt
+      },
+      {
+        role: "user" as const,
+        content: prompt
+      }
+    ],
+    temperature: 0.3,
+    maxTokens: REPORT_AI_MAX_TOKENS,
+    timeoutMs: REPORT_AI_TIMEOUT_MS
+  };
+
+  try {
+    return await callOpenAiCompatibleChat({
+      ...common,
+      responseFormatJson: true
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message.toLowerCase() : "";
+    const unsupportedJsonMode =
+      message.includes("response_format") ||
+      message.includes("json_object") ||
+      message.includes("unsupported") ||
+      message.includes("not support");
+
+    if (!unsupportedJsonMode) throw error;
+
+    return callOpenAiCompatibleChat(common);
+  }
 }
 
 export function reportAdvancedSource(advanced?: Partial<ReportTemplate> | null) {
@@ -209,32 +307,20 @@ export async function generatePersonalizedReportDetailed({
 
   try {
     const prompt = buildPrompt({ test, answers, result });
-    const text = await callOpenAiCompatibleChat({
-      settings,
-      messages: [
-        {
-          role: "system",
-          content: settings.aiSystemPrompt
-        },
-        {
-          role: "user",
-          content: prompt
-        }
-      ],
-      temperature: 0.55,
-      maxTokens: REPORT_AI_MAX_TOKENS,
-      timeoutMs: REPORT_AI_TIMEOUT_MS
-    });
-    const json = extractJson(text);
-    if (!json) {
+    const text = await callReportAi(settings, prompt);
+    const parsed = parseAiJson(text);
+    if (!parsed) {
       return failedStatus(settings, "failed", "AI 返回内容不是有效 JSON，已使用模板兜底");
     }
 
-    const parsed = JSON.parse(json);
     return generatedStatus(settings, safeReportTemplate(parsed, result.advanced));
   } catch (error) {
     return failedStatus(settings, "failed", safeErrorMessage(error));
   }
+}
+
+export function aiRetryCooldownSeconds() {
+  return REPORT_AI_RETRY_COOLDOWN_SECONDS;
 }
 
 export async function generatePersonalizedReport(input: AiReportInput) {
