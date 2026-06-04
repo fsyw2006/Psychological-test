@@ -52,8 +52,8 @@ export default async function HomePage() {
           {[
             {
               icon: ShieldCheck,
-              title: "无 AI 生成报告",
-              text: "高级分析来自数据库预设模板，结果稳定可审计。"
+              title: "AI 个性化报告",
+              text: "基于你的答题结果生成个性化分析与建议。"
             },
             {
               icon: Sparkles,
