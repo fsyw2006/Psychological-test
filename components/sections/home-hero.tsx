@@ -47,13 +47,23 @@ export function HomeHero() {
                 <ArrowRight />
               </Link>
             </Button>
-            <Button asChild variant="glass" size="lg" className="w-full sm:w-auto">
+            <Button
+              asChild
+              variant="outline"
+              size="lg"
+              className="w-full border-foreground/20 bg-background/95 text-foreground shadow-soft hover:bg-background sm:w-auto"
+            >
               <Link href="/account/reports">
                 <FileText />
                 查看报告
               </Link>
             </Button>
-            <Button asChild variant="outline" size="lg" className="w-full sm:w-auto">
+            <Button
+              asChild
+              variant="outline"
+              size="lg"
+              className="w-full border-foreground bg-foreground text-background shadow-soft hover:bg-foreground/90 sm:w-auto dark:border-primary dark:bg-primary dark:text-primary-foreground dark:hover:bg-primary/90"
+            >
               <Link href="/support">
                 <MessageCircle />
                 联系客服
