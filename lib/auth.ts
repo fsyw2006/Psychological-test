@@ -99,6 +99,7 @@ export async function getCurrentProfile() {
     return null;
   }
 }
+
 export async function requireProfile() {
   const profile = await getCurrentProfile();
   if (!profile) redirect("/auth/login");
