@@ -15,6 +15,10 @@ type AiReportInput = {
   result: AssessmentResult;
 };
 
+const REPORT_AI_TIMEOUT_MS = 45000;
+const REPORT_AI_MAX_TOKENS = 1200;
+const REPORT_AI_MAX_QUESTIONS = 30;
+
 export type AiReportGeneration =
   | {
       status: "generated";
@@ -87,14 +91,16 @@ function failedStatus(
 
 function safeErrorMessage(error: unknown) {
   const message = error instanceof Error ? error.message : "AI 生成失败";
-  if (message.toLowerCase().includes("abort")) return "AI 服务响应超时，已使用模板兜底";
+  if (message.toLowerCase().includes("abort")) {
+    return `AI 服务在 ${Math.round(REPORT_AI_TIMEOUT_MS / 1000)} 秒内没有返回，已使用模板兜底`;
+  }
   return sanitizeText(message, 160) || "AI 生成失败，已使用模板兜底";
 }
 
 function answerSummary(test: Assessment, answers: AssessmentAnswerInput[]) {
   const answerMap = new Map(answers.map((answer) => [answer.questionId, answer.values]));
 
-  return test.questions.slice(0, 80).map((question, index) => {
+  return test.questions.slice(0, REPORT_AI_MAX_QUESTIONS).map((question, index) => {
     const values = answerMap.get(question.id) || [];
     const labels = values
       .map((value) => question.options.find((option) => option.value === value)?.label || value)
@@ -216,7 +222,8 @@ export async function generatePersonalizedReportDetailed({
         }
       ],
       temperature: 0.55,
-      timeoutMs: 25000
+      maxTokens: REPORT_AI_MAX_TOKENS,
+      timeoutMs: REPORT_AI_TIMEOUT_MS
     });
     const json = extractJson(text);
     if (!json) {

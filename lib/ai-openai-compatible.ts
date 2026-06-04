@@ -83,11 +83,13 @@ export async function callOpenAiCompatibleChat({
   settings,
   messages,
   temperature = 0.7,
+  maxTokens,
   timeoutMs = 30000
 }: {
   settings: AiSettings;
   messages: AiChatMessage[];
   temperature?: number;
+  maxTokens?: number;
   timeoutMs?: number;
 }) {
   const baseUrl = resolveOpenAiBaseUrl(settings.aiProvider, settings.aiBaseUrl);
@@ -107,7 +109,8 @@ export async function callOpenAiCompatibleChat({
     body: JSON.stringify({
       model: settings.aiModel,
       messages,
-      temperature
+      temperature,
+      ...(typeof maxTokens === "number" ? { max_tokens: maxTokens } : {})
     })
   }).finally(() => {
     clearTimeout(timeout);
