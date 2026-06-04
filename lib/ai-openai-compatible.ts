@@ -82,18 +82,24 @@ export async function fetchOpenAiCompatibleModels({
 export async function callOpenAiCompatibleChat({
   settings,
   messages,
-  temperature = 0.7
+  temperature = 0.7,
+  timeoutMs = 30000
 }: {
   settings: AiSettings;
   messages: AiChatMessage[];
   temperature?: number;
+  timeoutMs?: number;
 }) {
   const baseUrl = resolveOpenAiBaseUrl(settings.aiProvider, settings.aiBaseUrl);
   if (!baseUrl) throw new Error("AI Base URL 未配置。");
   if (!settings.aiApiKey) throw new Error("AI API Key 未配置。");
 
+  const controller = new AbortController();
+  const timeout = windowOrNodeSetTimeout(() => controller.abort(), timeoutMs);
+
   const response = await fetch(chatEndpoint(baseUrl), {
     method: "POST",
+    signal: controller.signal,
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${settings.aiApiKey}`
@@ -103,6 +109,8 @@ export async function callOpenAiCompatibleChat({
       messages,
       temperature
     })
+  }).finally(() => {
+    clearTimeout(timeout);
   });
   const data = (await response.json().catch(() => ({}))) as OpenAiChatResponse;
 
@@ -113,4 +121,8 @@ export async function callOpenAiCompatibleChat({
   const content = data.choices?.[0]?.message?.content;
   if (!content) throw new Error("AI 服务没有返回内容。");
   return content;
+}
+
+function windowOrNodeSetTimeout(handler: () => void, timeoutMs: number) {
+  return setTimeout(handler, timeoutMs);
 }

@@ -109,7 +109,8 @@ export async function generatePersonalizedReport({
         content: prompt
       }
     ],
-    temperature: 0.55
+    temperature: 0.55,
+    timeoutMs: 25000
   });
   const json = extractJson(text);
   const parsed = json ? JSON.parse(json) : {};

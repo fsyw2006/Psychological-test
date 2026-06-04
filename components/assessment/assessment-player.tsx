@@ -2,8 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AnimatePresence, motion } from "framer-motion";
-import { ArrowLeft, ArrowRight, CheckCircle2, Save } from "lucide-react";
+import { ArrowLeft, ArrowRight, CheckCircle2, Loader2, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import type { Assessment, AssessmentAnswerInput } from "@/lib/types";
@@ -16,8 +15,9 @@ export function AssessmentPlayer({ test }: { test: Assessment }) {
   const [answers, setAnswers] = useState<Record<string, string[]>>({});
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const question = test.questions[index];
-  const progress = ((index + 1) / test.questions.length) * 100;
+  const [submitSeconds, setSubmitSeconds] = useState(0);
+  const question = test.questions[index] || test.questions[0];
+  const progress = test.questions.length ? ((index + 1) / test.questions.length) * 100 : 0;
 
   useEffect(() => {
     const saved = localStorage.getItem(storageKey);
@@ -34,11 +34,37 @@ export function AssessmentPlayer({ test }: { test: Assessment }) {
     localStorage.setItem(storageKey, JSON.stringify(answers));
   }, [answers, storageKey]);
 
-  const currentValues = answers[question.id] || [];
+  useEffect(() => {
+    if (!submitting) {
+      setSubmitSeconds(0);
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      setSubmitSeconds((value) => value + 1);
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [submitting]);
+
   const answeredCount = useMemo(
     () => test.questions.filter((item) => (answers[item.id] || []).length > 0).length,
     [answers, test.questions]
   );
+
+  if (!question) {
+    return (
+      <div className="mx-auto max-w-3xl rounded-lg border border-border bg-background/70 p-6 text-center">
+        <p className="font-semibold">当前测评题库为空</p>
+        <p className="mt-2 text-sm leading-6 text-muted-foreground">
+          请先在后台“测评管理”中点击“一键恢复内置题库”，或使用 AI
+          生成题目草稿后保存为正式题目。
+        </p>
+      </div>
+    );
+  }
+
+  const currentValues = answers[question.id] || [];
 
   function toggleValue(value: string) {
     setError("");
@@ -119,15 +145,7 @@ export function AssessmentPlayer({ test }: { test: Assessment }) {
       </div>
 
       <div className="glass-panel rounded-lg p-4 sm:p-8">
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={question.id}
-            initial={{ opacity: 0, x: 24 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -24 }}
-            transition={{ duration: 0.22 }}
-            className="space-y-6"
-          >
+        <div key={question.id} className="space-y-6">
             <div>
               <p className="eyebrow">{test.category}</p>
               <h1 className="mt-2 text-xl font-semibold leading-snug sm:text-3xl">
@@ -170,8 +188,7 @@ export function AssessmentPlayer({ test }: { test: Assessment }) {
                 {error}
               </div>
             ) : null}
-          </motion.div>
-        </AnimatePresence>
+          </div>
 
         <div className="mt-8 grid grid-cols-2 gap-3">
           <Button
@@ -185,8 +202,8 @@ export function AssessmentPlayer({ test }: { test: Assessment }) {
           </Button>
           {index === test.questions.length - 1 ? (
             <Button onClick={submit} disabled={submitting} className="w-full">
-              <CheckCircle2 />
-              {submitting ? "提交中" : "提交测评"}
+              {submitting ? <Loader2 className="animate-spin" /> : <CheckCircle2 />}
+              {submitting ? "生成报告中" : "提交测评"}
             </Button>
           ) : (
             <Button onClick={goNext} disabled={submitting} className="w-full">
@@ -195,6 +212,12 @@ export function AssessmentPlayer({ test }: { test: Assessment }) {
             </Button>
           )}
         </div>
+        {submitting ? (
+          <div className="mt-4 rounded-md border border-primary/20 bg-primary/10 px-3 py-2 text-sm leading-6 text-primary">
+            正在评分并生成报告。若已开启 AI 个性化报告，通常需要 10-30 秒，请不要关闭页面。
+            {submitSeconds ? ` 已等待 ${submitSeconds} 秒。` : ""}
+          </div>
+        ) : null}
       </div>
     </div>
   );

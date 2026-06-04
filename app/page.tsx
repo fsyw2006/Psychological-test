@@ -15,9 +15,9 @@ export const revalidate = 0;
 
 export default async function HomePage() {
   const [tests, categories, articles, plans] = await Promise.all([
-    getAssessmentCatalog(),
+    getAssessmentCatalog({ includeQuestions: false }),
     getCategories(),
-    getArticles(),
+    getArticles(3),
     getMembershipPlans()
   ]);
   const featured = tests.slice(0, 3);

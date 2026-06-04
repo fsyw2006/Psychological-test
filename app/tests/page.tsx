@@ -16,7 +16,7 @@ export default async function TestsPage({
 }) {
   const [{ category }, tests, categories] = await Promise.all([
     searchParams,
-    getAssessmentCatalog(),
+    getAssessmentCatalog({ includeQuestions: false }),
     getCategories()
   ]);
   const filtered = category ? tests.filter((test) => test.categorySlug === category) : tests;

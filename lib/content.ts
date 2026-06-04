@@ -29,6 +29,13 @@ function visibleAssessments(list: Assessment[]) {
   return list.filter((test) => allowedAssessmentSet.has(test.slug));
 }
 
+function stripQuestions(list: Assessment[]) {
+  return list.map((test) => ({
+    ...test,
+    questions: []
+  }));
+}
+
 type QuestionRow = {
   id: string;
   title: string;
@@ -76,20 +83,29 @@ function normalizeTest(row: Record<string, any>): Assessment {
   };
 }
 
-export async function getAssessmentCatalog() {
+export async function getAssessmentCatalog({
+  includeQuestions = true
+}: { includeQuestions?: boolean } = {}) {
   if (!hasServiceRoleEnv()) {
-    return visibleAssessments(assessments);
+    const list = visibleAssessments(assessments);
+    return includeQuestions ? list : stripQuestions(list);
   }
 
   await ensureContentSeeded();
   const supabase = createSupabaseServiceClient();
+  const select = includeQuestions
+    ? "*, categories(slug,name), questions(*)"
+    : "*, categories(slug,name)";
   const { data, error } = await supabase
     .from("tests")
-    .select("*, categories(slug,name), questions(*)")
+    .select(select)
     .eq("status", "PUBLISHED")
     .order("created_at", { ascending: true });
 
-  if (error || !data?.length) return visibleAssessments(assessments);
+  if (error || !data?.length) {
+    const list = visibleAssessments(assessments);
+    return includeQuestions ? list : stripQuestions(list);
+  }
   return visibleAssessments(data.map(normalizeTest));
 }
 
@@ -135,18 +151,24 @@ export async function getCategories() {
   }));
 }
 
-export async function getArticles() {
-  if (!hasServiceRoleEnv()) return articles;
+export async function getArticles(limit?: number) {
+  if (!hasServiceRoleEnv()) return typeof limit === "number" ? articles.slice(0, limit) : articles;
 
   await ensureContentSeeded();
   const supabase = createSupabaseServiceClient();
-  const { data, error } = await supabase
+  let query = supabase
     .from("articles")
     .select("*, categories(name)")
     .eq("status", "PUBLISHED")
     .order("published_at", { ascending: false });
 
-  if (error || !data?.length) return articles;
+  if (typeof limit === "number") {
+    query = query.limit(limit);
+  }
+
+  const { data, error } = await query;
+
+  if (error || !data?.length) return typeof limit === "number" ? articles.slice(0, limit) : articles;
   return data.map(
     (item): Article => ({
       slug: item.slug,

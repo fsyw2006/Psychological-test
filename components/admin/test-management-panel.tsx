@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CheckCircle2, Loader2, Save, Sparkles } from "lucide-react";
+import { CheckCircle2, Loader2, RefreshCw, Save, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -45,6 +45,7 @@ export function TestManagementPanel({
   const [saving, setSaving] = useState<string | null>(null);
   const [generating, setGenerating] = useState<string | null>(null);
   const [applying, setApplying] = useState<string | null>(null);
+  const [repairing, setRepairing] = useState(false);
   const [message, setMessage] = useState("");
 
   function update(slug: string, patch: Partial<TestDraft>) {
@@ -82,6 +83,33 @@ export function TestManagementPanel({
 
     setSaving(null);
     setMessage(response.ok ? "测评配置已保存" : data.error || "保存失败");
+  }
+
+  async function repairBuiltInQuestionBank() {
+    const confirmed = window.confirm(
+      "确认恢复内置测评题库吗？这会把内置测评的分类、题目和报告模板修复到 Supabase，用于解决分类 0 项或题目为空的问题。"
+    );
+    if (!confirmed) return;
+
+    setRepairing(true);
+    setMessage("");
+
+    const response = await fetch("/api/admin/tests/repair", {
+      method: "POST",
+      credentials: "include",
+      cache: "no-store"
+    });
+    const data = await response.json().catch(() => ({}));
+    setRepairing(false);
+
+    if (!response.ok) {
+      setMessage(data.error || "内置题库恢复失败");
+      return;
+    }
+
+    setMessage(
+      `内置题库已恢复：${data.repairedTests || 0} 个测评，${data.repairedQuestions || 0} 道题。请刷新页面查看最新数量。`
+    );
   }
 
   async function generateQuestions(test: Assessment) {
@@ -150,6 +178,26 @@ export function TestManagementPanel({
 
   return (
     <div className="space-y-4">
+      <div className="rounded-lg border border-border bg-background/55 p-4">
+        <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+          <div>
+            <p className="font-semibold">题库修复</p>
+            <p className="mt-1 text-sm leading-6 text-muted-foreground">
+              如果前台分类显示 0 项，或某个测评没有题目，可先恢复内置测评题库。
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={repairBuiltInQuestionBank}
+            disabled={repairing}
+          >
+            {repairing ? <Loader2 className="animate-spin" /> : <RefreshCw />}
+            一键恢复内置题库
+          </Button>
+        </div>
+      </div>
+
       {message ? (
         <div className="rounded-md border border-primary/20 bg-primary/10 px-3 py-2 text-sm text-primary">
           {message}

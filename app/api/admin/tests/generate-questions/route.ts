@@ -4,6 +4,7 @@ import { getAiSettings } from "@/lib/ai-settings";
 import { callOpenAiCompatibleChat } from "@/lib/ai-openai-compatible";
 import { requireAdminProfile } from "@/lib/auth";
 import { getAssessmentCatalog } from "@/lib/content";
+import { assessments } from "@/lib/demo-data";
 import { sanitizeText } from "@/lib/security";
 import type { AssessmentQuestion } from "@/lib/types";
 
@@ -23,7 +24,21 @@ function extractJson(text: string) {
 }
 
 function safeQuestions(input: unknown, fallback: AssessmentQuestion[]) {
-  const list = Array.isArray(input) ? input : fallback;
+  const fallbackQuestions = fallback.length
+    ? fallback
+    : [
+        {
+          id: "ai-fallback-1",
+          title: "面对这个主题时，你通常更接近哪种状态？",
+          type: "single" as const,
+          required: true,
+          options: [
+            { label: "比较符合", value: "1", score: 1 },
+            { label: "不太符合", value: "0", score: 0 }
+          ]
+        }
+      ];
+  const list = Array.isArray(input) && input.length ? input : fallbackQuestions;
 
   return list
     .map((item, index): AssessmentQuestion => {
@@ -32,7 +47,9 @@ function safeQuestions(input: unknown, fallback: AssessmentQuestion[]) {
 
       return {
         id: sanitizeText(source.id || `ai-q-${index + 1}`, 40) || `ai-q-${index + 1}`,
-        title: sanitizeText(source.title, 160) || fallback[index % fallback.length]?.title,
+        title:
+          sanitizeText(source.title, 160) ||
+          fallbackQuestions[index % fallbackQuestions.length]?.title,
         helper: sanitizeText(source.helper, 120) || undefined,
         type:
           source.type === "multiple" || source.type === "likert" ? source.type : "single",
@@ -45,19 +62,21 @@ function safeQuestions(input: unknown, fallback: AssessmentQuestion[]) {
           return {
             label:
               sanitizeText(safeOption.label, 120) ||
-              fallback[index % fallback.length]?.options[optionIndex]?.label ||
+              fallbackQuestions[index % fallbackQuestions.length]?.options[optionIndex]?.label ||
               `选项 ${optionIndex + 1}`,
             value:
               sanitizeText(safeOption.value, 40) ||
-              fallback[index % fallback.length]?.options[optionIndex]?.value ||
+              fallbackQuestions[index % fallbackQuestions.length]?.options[optionIndex]?.value ||
               String(optionIndex + 1),
             score:
               typeof safeOption.score === "number"
                 ? safeOption.score
-                : fallback[index % fallback.length]?.options[optionIndex]?.score,
+                : fallbackQuestions[index % fallbackQuestions.length]?.options[optionIndex]
+                    ?.score,
             dimension:
               sanitizeText(safeOption.dimension, 40) ||
-              fallback[index % fallback.length]?.options[optionIndex]?.dimension
+              fallbackQuestions[index % fallbackQuestions.length]?.options[optionIndex]
+                ?.dimension
           };
         })
       };
@@ -66,7 +85,7 @@ function safeQuestions(input: unknown, fallback: AssessmentQuestion[]) {
 }
 
 function mockQuestions(testQuestions: AssessmentQuestion[], count: number) {
-  return testQuestions.slice(0, count).map((question, index) => ({
+  return safeQuestions(testQuestions, []).slice(0, count).map((question, index) => ({
     ...question,
     id: `ai-q-${index + 1}`,
     title: `${question.title.replace(/[？?]$/g, "")}（AI 草稿）？`
@@ -100,6 +119,10 @@ export async function POST(request: NextRequest) {
   if (!test) {
     return NextResponse.json({ error: "测评不存在" }, { status: 404 });
   }
+  const builtInTest = assessments.find((item) => item.slug === test.slug);
+  const sourceQuestions = test.questions.length
+    ? test.questions
+    : builtInTest?.questions || [];
 
   const settings = await getAiSettings();
   if (!settings.aiQuestionBankEnabled) {
@@ -111,7 +134,7 @@ export async function POST(request: NextRequest) {
 
   if (settings.aiProvider === "mock") {
     return NextResponse.json({
-      questions: mockQuestions(test.questions, body.data.questionCount),
+      questions: mockQuestions(sourceQuestions, body.data.questionCount),
       provider: settings.aiProvider
     });
   }
@@ -140,7 +163,7 @@ export async function POST(request: NextRequest) {
           content: buildPrompt(
             test.title,
             test.description,
-            test.questions,
+            sourceQuestions,
             body.data.questionCount
           )
         }
@@ -151,7 +174,7 @@ export async function POST(request: NextRequest) {
     const parsed = json ? JSON.parse(json) : [];
 
     return NextResponse.json({
-      questions: safeQuestions(parsed, test.questions).slice(0, body.data.questionCount),
+      questions: safeQuestions(parsed, sourceQuestions).slice(0, body.data.questionCount),
       provider: settings.aiProvider,
       model: settings.aiModel
     });
