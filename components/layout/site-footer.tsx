@@ -41,6 +41,9 @@ export function SiteFooter() {
           <Link href="/auth/login" className="block text-muted-foreground hover:text-foreground">
             登录注册
           </Link>
+          <Link href="/support" className="block text-muted-foreground hover:text-foreground">
+            在线客服
+          </Link>
         </div>
       </div>
     </footer>
