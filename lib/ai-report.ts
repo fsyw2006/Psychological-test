@@ -15,6 +15,22 @@ type AiReportInput = {
   result: AssessmentResult;
 };
 
+export type AiReportGeneration =
+  | {
+      status: "generated";
+      report: ReportTemplate;
+      provider: string;
+      model: string;
+      attemptedAt: string;
+    }
+  | {
+      status: "failed" | "skipped";
+      reason: string;
+      provider: string;
+      model: string;
+      attemptedAt: string;
+    };
+
 function normalizeList(value: unknown, fallback: string[]) {
   const list = Array.isArray(value) ? value : fallback;
   return list
@@ -39,6 +55,40 @@ function safeReportTemplate(input: Partial<ReportTemplate>, fallback: ReportTemp
     generatedByAi: true,
     generatedAt: new Date().toISOString()
   } satisfies ReportTemplate;
+}
+
+function baseStatus(settings: AiSettings) {
+  return {
+    provider: settings.aiProvider,
+    model: settings.aiModel,
+    attemptedAt: new Date().toISOString()
+  };
+}
+
+function generatedStatus(settings: AiSettings, report: ReportTemplate): AiReportGeneration {
+  return {
+    status: "generated",
+    report,
+    ...baseStatus(settings)
+  };
+}
+
+function failedStatus(
+  settings: AiSettings,
+  status: "failed" | "skipped",
+  reason: string
+): AiReportGeneration {
+  return {
+    status,
+    reason,
+    ...baseStatus(settings)
+  };
+}
+
+function safeErrorMessage(error: unknown) {
+  const message = error instanceof Error ? error.message : "AI 生成失败";
+  if (message.toLowerCase().includes("abort")) return "AI 服务响应超时，已使用模板兜底";
+  return sanitizeText(message, 160) || "AI 生成失败，已使用模板兜底";
 }
 
 function answerSummary(test: Assessment, answers: AssessmentAnswerInput[]) {
@@ -85,35 +135,102 @@ export function reportAdvancedSource(advanced?: Partial<ReportTemplate> | null) 
   return advanced?.generatedByAi || advanced?.source === "ai" ? "ai" : "template";
 }
 
-export async function generatePersonalizedReport({
+function mockPersonalizedReport({ test, result }: Omit<AiReportInput, "settings" | "answers">) {
+  return safeReportTemplate(
+    {
+      title: `${result.type} 个性化分析`,
+      summary: `结合你在「${test.title}」中的得分和结果类型，你当前更适合用温和、可执行的小步骤推进自我理解。`,
+      traits: [
+        `你的结果更接近「${result.type}」，说明当前模式有相对稳定的倾向。`,
+        "在熟悉场景中更容易发挥优势，面对变化时需要给自己一点缓冲。",
+        "适合把感受、想法和行动拆开观察，减少一次性判断。"
+      ],
+      strengths: [
+        "能从经历中提炼线索，适合建立自己的成长记录。",
+        "当目标清晰时，更容易持续完成小规模行动。",
+        "对自我状态有觉察空间，适合做阶段性复盘。"
+      ],
+      risks: [
+        "压力较高时可能把暂时状态误认为固定能力。",
+        "如果只看单次测评结果，容易忽略环境和近期事件的影响。",
+        "遇到复杂问题时，可能需要外部反馈帮助校准判断。"
+      ],
+      growth: [
+        "未来一周记录 3 个让你感到消耗或充电的具体场景。",
+        "为一个主要困扰设计一个 10 分钟以内的小行动。",
+        "复盘时同时写下事实、感受和下一步，不急着给自己下结论。"
+      ],
+      careers: [
+        "优先选择目标边界清楚、反馈周期稳定的任务。",
+        "把大目标拆成可检查的小节点，减少启动压力。",
+        "需要协作时提前说明自己的节奏和信息偏好。"
+      ],
+      relationships: [
+        "表达需求时尽量使用具体场景，而不是笼统评价。",
+        "遇到分歧时先确认彼此理解，再进入解决方案。",
+        "给重要关系保留稳定沟通频率，避免只在压力高时沟通。"
+      ]
+    },
+    result.advanced
+  );
+}
+
+export async function generatePersonalizedReportDetailed({
   settings,
   test,
   answers,
   result
-}: AiReportInput) {
-  if (!settings.aiReportTemplateEnabled) return null;
-  if (settings.aiProvider === "mock") return null;
-  if (!settings.aiApiKey) return null;
-  if (settings.aiProvider === "claude") return null;
+}: AiReportInput): Promise<AiReportGeneration> {
+  if (!settings.aiReportTemplateEnabled) {
+    return failedStatus(settings, "skipped", "后台未开启报告模板 AI 辅助");
+  }
 
-  const prompt = buildPrompt({ test, answers, result });
-  const text = await callOpenAiCompatibleChat({
-    settings,
-    messages: [
-      {
-        role: "system",
-        content: settings.aiSystemPrompt
-      },
-      {
-        role: "user",
-        content: prompt
-      }
-    ],
-    temperature: 0.55,
-    timeoutMs: 25000
-  });
-  const json = extractJson(text);
-  const parsed = json ? JSON.parse(json) : {};
+  if (settings.aiProvider === "mock") {
+    return generatedStatus(settings, mockPersonalizedReport({ test, result }));
+  }
 
-  return safeReportTemplate(parsed, result.advanced);
+  if (!settings.aiApiKey) {
+    return failedStatus(settings, "failed", "AI API Key 未配置，已使用模板兜底");
+  }
+
+  if (settings.aiProvider === "claude") {
+    return failedStatus(
+      settings,
+      "failed",
+      "当前报告生成仅支持 OpenAI 兼容接口，Claude 已使用模板兜底"
+    );
+  }
+
+  try {
+    const prompt = buildPrompt({ test, answers, result });
+    const text = await callOpenAiCompatibleChat({
+      settings,
+      messages: [
+        {
+          role: "system",
+          content: settings.aiSystemPrompt
+        },
+        {
+          role: "user",
+          content: prompt
+        }
+      ],
+      temperature: 0.55,
+      timeoutMs: 25000
+    });
+    const json = extractJson(text);
+    if (!json) {
+      return failedStatus(settings, "failed", "AI 返回内容不是有效 JSON，已使用模板兜底");
+    }
+
+    const parsed = JSON.parse(json);
+    return generatedStatus(settings, safeReportTemplate(parsed, result.advanced));
+  } catch (error) {
+    return failedStatus(settings, "failed", safeErrorMessage(error));
+  }
+}
+
+export async function generatePersonalizedReport(input: AiReportInput) {
+  const generation = await generatePersonalizedReportDetailed(input);
+  return generation.status === "generated" ? generation.report : null;
 }

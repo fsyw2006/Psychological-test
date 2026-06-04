@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { Bot, Loader2, RefreshCw, Save } from "lucide-react";
+import { Bot, Loader2, RefreshCw, Save, TestTube2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -29,6 +29,7 @@ export function AiSettingsForm({
   const [settings, setSettings] = useState(initialSettings);
   const [saving, setSaving] = useState(false);
   const [loadingModels, setLoadingModels] = useState(false);
+  const [testingReportAi, setTestingReportAi] = useState(false);
   const [models, setModels] = useState<string[]>([]);
   const [message, setMessage] = useState("");
   const canFetchModels = !["mock", "claude"].includes(settings.aiProvider);
@@ -91,6 +92,30 @@ export function AiSettingsForm({
           : nextModels[0] || current.aiModel
     }));
     setMessage(`已获取 ${nextModels.length} 个模型`);
+  }
+
+  async function testReportAi() {
+    setTestingReportAi(true);
+    setMessage("");
+
+    const response = await fetch("/api/admin/ai-settings/report-test", {
+      method: "POST",
+      credentials: "include",
+      cache: "no-store"
+    });
+    const data = await response.json().catch(() => ({}));
+    setTestingReportAi(false);
+
+    if (!response.ok) {
+      setMessage(data.error || "报告 AI 测试失败");
+      return;
+    }
+
+    setMessage(
+      data.ok
+        ? `报告 AI 测试成功：${data.provider} / ${data.model}`
+        : `报告 AI 未成功：${data.reason || "请检查模型配置"}`
+    );
   }
 
   async function save(event: FormEvent<HTMLFormElement>) {
@@ -172,7 +197,7 @@ export function AiSettingsForm({
               <div>
                 <p>开启报告模板 AI 辅助</p>
                 <p className="mt-1 text-xs font-normal text-muted-foreground">
-                  默认关闭；用于以后在后台辅助生成报告模板，不影响用户结果页。
+                  默认关闭；开启后可在后台 AI 更新报告模板，会员提交新测评时也会尝试生成 AI 个性化报告。
                 </p>
               </div>
               <Switch
@@ -314,10 +339,22 @@ export function AiSettingsForm({
             </div>
           </div>
 
-          <Button disabled={saving} className="w-full sm:w-auto">
-            {saving ? <Loader2 className="animate-spin" /> : <Save />}
-            保存 AI 设置
-          </Button>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Button disabled={saving} className="w-full sm:w-auto">
+              {saving ? <Loader2 className="animate-spin" /> : <Save />}
+              保存 AI 设置
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={testReportAi}
+              disabled={testingReportAi}
+              className="w-full sm:w-auto"
+            >
+              {testingReportAi ? <Loader2 className="animate-spin" /> : <TestTube2 />}
+              测试报告 AI
+            </Button>
+          </div>
         </CardContent>
       </Card>
     </form>

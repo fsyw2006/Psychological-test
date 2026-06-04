@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { getCurrentProfile } from "@/lib/auth";
 import { getAiSettings } from "@/lib/ai-settings";
-import { generatePersonalizedReport } from "@/lib/ai-report";
+import { generatePersonalizedReportDetailed } from "@/lib/ai-report";
 import { getAssessmentBySlug } from "@/lib/content";
 import { hasServiceRoleEnv, hasSupabaseEnv } from "@/lib/env";
 import { rateLimited } from "@/lib/security";
@@ -118,20 +118,40 @@ export async function POST(request: NextRequest) {
   if (hasMembership) {
     try {
       const settings = await getAiSettings();
-      const aiAdvanced = await generatePersonalizedReport({
+      const aiGeneration = await generatePersonalizedReportDetailed({
         settings,
         test,
         answers: body.data.answers,
         result
       });
 
-      if (aiAdvanced) {
+      const aiStatus = {
+        status: aiGeneration.status,
+        reason: aiGeneration.status === "generated" ? undefined : aiGeneration.reason,
+        provider: aiGeneration.provider,
+        model: aiGeneration.model,
+        attemptedAt: aiGeneration.attemptedAt
+      };
+
+      if (aiGeneration.status === "generated") {
+        const aiAdvanced = {
+          ...aiGeneration.report,
+          aiStatus
+        };
         finalResult = {
           ...result,
           title: aiAdvanced.title,
           summary: aiAdvanced.summary,
           advanced: aiAdvanced,
           advancedSource: "ai"
+        };
+      } else {
+        finalResult = {
+          ...finalResult,
+          advanced: {
+            ...finalResult.advanced,
+            aiStatus
+          }
         };
       }
     } catch (error) {

@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   Heart,
   Lock,
+  RefreshCw,
   Sparkles,
   TrendingUp
 } from "lucide-react";
@@ -50,6 +51,8 @@ export function ResultReport({
 }) {
   const [result, setResult] = useState<AssessmentResult | null>(initialResult || null);
   const [loading, setLoading] = useState(!initialResult);
+  const [regeneratingAi, setRegeneratingAi] = useState(false);
+  const [aiMessage, setAiMessage] = useState("");
 
   useEffect(() => {
     if (initialResult) return;
@@ -77,6 +80,36 @@ export function ResultReport({
     };
   }, [initialResult, resultId]);
 
+  async function regenerateAiReport() {
+    setRegeneratingAi(true);
+    setAiMessage("");
+
+    const response = await fetch(`/api/results/${resultId}/regenerate-ai`, {
+      method: "POST",
+      credentials: "include",
+      cache: "no-store"
+    });
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      setRegeneratingAi(false);
+      setAiMessage(data.error || "AI 报告重新生成失败");
+      return;
+    }
+
+    const refreshed = await fetch(`/api/results/${resultId}`, {
+      credentials: "include",
+      cache: "no-store"
+    });
+    const refreshedData = await refreshed.json().catch(() => ({}));
+    if (refreshed.ok && refreshedData.result) {
+      setResult(refreshedData.result);
+    }
+
+    setRegeneratingAi(false);
+    setAiMessage(data.ok ? "AI 报告已重新生成" : data.reason || "AI 未成功，当前使用模板兜底");
+  }
+
   if (loading) {
     return <div className="section-shell text-center text-muted-foreground">报告生成中...</div>;
   }
@@ -92,6 +125,10 @@ export function ResultReport({
     ["phq-9", "gad-7", "stress-index", "sleep-quality", "social-anxiety"].includes(
       result.testSlug
     );
+  const aiStatus = result.advancedAiStatus || result.advanced.aiStatus;
+  const aiFailed = result.advancedSource !== "ai" && aiStatus?.status === "failed";
+  const advancedBadgeText =
+    result.advancedSource === "ai" ? "AI 个性化" : aiFailed ? "AI未成功" : "模板报告";
 
   return (
     <section className="section-shell">
@@ -156,10 +193,35 @@ export function ResultReport({
                     <Badge variant="outline">会员解锁</Badge>
                   )}
                   <Badge variant={result.advancedSource === "ai" ? "soft" : "outline"}>
-                    {result.advancedSource === "ai" ? "AI 个性化" : "模板报告"}
+                    {advancedBadgeText}
                   </Badge>
                 </div>
               </div>
+              {result.isUnlocked && aiFailed ? (
+                <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                  {aiStatus?.reason || "AI 生成没有成功，当前展示模板兜底报告。"}
+                </p>
+              ) : null}
+              {result.isUnlocked && result.advancedSource !== "ai" ? (
+                <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={regenerateAiReport}
+                    disabled={regeneratingAi}
+                    className="w-full sm:w-auto"
+                  >
+                    {regeneratingAi ? <RefreshCw className="animate-spin" /> : <Sparkles />}
+                    重新生成 AI 报告
+                  </Button>
+                  {aiMessage ? (
+                    <p className="text-sm leading-6 text-muted-foreground">{aiMessage}</p>
+                  ) : null}
+                </div>
+              ) : aiMessage ? (
+                <p className="mt-3 text-sm leading-6 text-muted-foreground">{aiMessage}</p>
+              ) : null}
             </CardHeader>
             <CardContent>
               {result.isUnlocked ? (

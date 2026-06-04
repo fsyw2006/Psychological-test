@@ -4,6 +4,7 @@ import { reportAdvancedSource } from "@/lib/ai-report";
 import { hasServiceRoleEnv } from "@/lib/env";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { safeJson } from "@/lib/utils";
+import type { ReportTemplate } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -79,7 +80,16 @@ export async function GET(
         .eq("id", id);
     }
   }
-  const advanced = safeJson(data.advanced_report, {});
+  const advanced = safeJson<ReportTemplate>(data.advanced_report, {
+    title: "高级报告",
+    summary: data.summary || "",
+    traits: [],
+    strengths: [],
+    risks: [],
+    growth: [],
+    careers: [],
+    relationships: []
+  });
 
   return noStoreJson({
     result: {
@@ -95,6 +105,7 @@ export async function GET(
       dimensions: safeJson(data.dimensions, {}),
       advanced,
       advancedSource: reportAdvancedSource(advanced),
+      advancedAiStatus: advanced.aiStatus,
       isUnlocked,
       createdAt: data.created_at
     }

@@ -37,6 +37,13 @@ export type ReportTemplate = {
   source?: "template" | "ai";
   generatedByAi?: boolean;
   generatedAt?: string;
+  aiStatus?: {
+    status: "generated" | "failed" | "skipped";
+    reason?: string;
+    provider?: string;
+    model?: string;
+    attemptedAt?: string;
+  };
 };
 
 export type Assessment = {
@@ -83,6 +90,7 @@ export type AssessmentResult = {
   dimensions: Record<string, number>;
   advanced: ReportTemplate;
   advancedSource?: "template" | "ai";
+  advancedAiStatus?: ReportTemplate["aiStatus"];
   isUnlocked: boolean;
   createdAt: string;
 };
