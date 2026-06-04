@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import type { MembershipPlan } from "@/lib/types";
 
@@ -33,6 +34,7 @@ export function PricingAdminForm({
     event.preventDefault();
     setSaving(true);
     setMessage("");
+
     const response = await fetch("/api/admin/pricing", {
       method: "PATCH",
       headers: {
@@ -45,7 +47,8 @@ export function PricingAdminForm({
         dailyFreeTests
       })
     });
-    const data = await response.json();
+    const data = await response.json().catch(() => ({}));
+
     setSaving(false);
     setMessage(response.ok ? "定价配置已保存" : data.error || "保存失败");
     if (response.ok) {
@@ -122,6 +125,7 @@ export function PricingAdminForm({
                   />
                 </div>
               </div>
+
               <div className="space-y-2">
                 <Label htmlFor={`${plan.slug}-period`}>计费周期</Label>
                 <Input
@@ -130,16 +134,16 @@ export function PricingAdminForm({
                   onChange={(event) => updatePlan(plan.slug, { period: event.target.value })}
                 />
               </div>
+
               <div className="space-y-2">
                 <Label htmlFor={`${plan.slug}-description`}>说明</Label>
                 <Textarea
                   id={`${plan.slug}-description`}
                   value={plan.description}
-                  onChange={(event) =>
-                    updatePlan(plan.slug, { description: event.target.value })
-                  }
+                  onChange={(event) => updatePlan(plan.slug, { description: event.target.value })}
                 />
               </div>
+
               <div className="space-y-2">
                 <Label htmlFor={`${plan.slug}-features`}>权益（一行一条）</Label>
                 <Textarea
@@ -155,17 +159,22 @@ export function PricingAdminForm({
                   }
                 />
               </div>
-              <label className="flex items-center justify-between gap-3 rounded-md border border-border bg-background/60 px-3 py-2 text-sm font-medium">
-                前台推荐
-                <input
-                  type="checkbox"
+
+              <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-background/60 px-3 py-3 text-sm font-medium">
+                <div>
+                  <p>前台推荐</p>
+                  <p className="mt-1 text-xs font-normal text-muted-foreground">
+                    开启后该套餐卡会显示推荐标识。
+                  </p>
+                </div>
+                <Switch
                   checked={Boolean(plan.highlighted)}
                   onChange={(event) =>
                     updatePlan(plan.slug, { highlighted: event.target.checked })
                   }
-                  className="size-4 accent-primary"
+                  aria-label={`${plan.name} 前台推荐`}
                 />
-              </label>
+              </div>
             </CardContent>
           </Card>
         ))}

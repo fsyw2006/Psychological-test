@@ -43,6 +43,8 @@ async function seedSystemConfigs(supabase: ReturnType<typeof createSupabaseServi
       key: "ai_settings",
       value: {
         aiChatEnabled: false,
+        aiQuestionBankEnabled: false,
+        aiReportTemplateEnabled: false,
         aiProvider: "mock",
         aiModel: "mock-companion",
         aiApiKey: "",
@@ -98,6 +100,8 @@ async function seedSystemConfigs(supabase: ReturnType<typeof createSupabaseServi
   const adminConfigDefaults = (
     [
     ["aiChatEnabled", false],
+    ["aiQuestionBankEnabled", false],
+    ["aiReportTemplateEnabled", false],
     ["aiProvider", "mock"],
     ["aiModel", "mock-companion"],
     ["aiApiKey", ""],

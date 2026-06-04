@@ -6,6 +6,18 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/componen
 import type { MembershipPlan } from "@/lib/types";
 import { formatCurrency } from "@/lib/utils";
 
+function planHref(slug: string) {
+  if (slug === "free") return "/tests";
+  if (slug === "single-report") return "/account/reports";
+  return `/checkout?plan=${encodeURIComponent(slug)}`;
+}
+
+function planActionLabel(slug: string) {
+  if (slug === "free") return "免费体验";
+  if (slug === "single-report") return "选择报告";
+  return "立即开通";
+}
+
 export function PricingCards({ plans }: { plans: MembershipPlan[] }) {
   return (
     <div className="grid gap-4 lg:grid-cols-4">
@@ -52,15 +64,13 @@ export function PricingCards({ plans }: { plans: MembershipPlan[] }) {
               variant={plan.slug === "free" ? "outline" : plan.highlighted ? "default" : "glass"}
               className="w-full"
             >
-              <Link
-                href={
-                  plan.slug === "free"
-                    ? "/tests"
-                    : `/checkout?plan=${encodeURIComponent(plan.slug)}`
-                }
-              >
-                {plan.slug === "free" ? <Sparkles /> : <Crown />}
-                {plan.slug === "free" ? "免费体验" : "立即开通"}
+              <Link href={planHref(plan.slug)}>
+                {plan.slug === "free" || plan.slug === "single-report" ? (
+                  <Sparkles />
+                ) : (
+                  <Crown />
+                )}
+                {planActionLabel(plan.slug)}
               </Link>
             </Button>
           </CardFooter>

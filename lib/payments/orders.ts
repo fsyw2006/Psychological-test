@@ -1,10 +1,11 @@
-import { addDays, addMonths, addYears } from "date-fns";
+import { addMinutes, addMonths, addYears } from "date-fns";
 import { nanoid } from "nanoid";
 import { hasServiceRoleEnv } from "@/lib/env";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import type { AppProfile } from "@/lib/auth";
 import type { PlanSlug } from "@/lib/types";
 import { productForPlan } from "@/lib/payments/catalog";
+import { ORDER_EXPIRE_MINUTES } from "@/lib/order-status";
 
 export type OrderRecord = {
   id: string;
@@ -16,6 +17,8 @@ export type OrderRecord = {
   amount_cents: number;
   currency: string;
   status: "PENDING" | "PAID" | "FAILED" | "CLOSED" | "REFUNDED";
+  expires_at?: string | null;
+  paid_at?: string | null;
 };
 
 export function createOrderNo() {
@@ -38,7 +41,7 @@ export async function createCheckoutOrder({
   const product = await productForPlan(plan);
 
   if (product.productType === "REPORT_UNLOCK" && !resultId) {
-    throw new Error("Missing report id for single report unlock.");
+    throw new Error("单次解锁需要先选择一份测评报告，请从报告页点击“立即解锁”。");
   }
 
   if (!hasServiceRoleEnv()) {
@@ -78,7 +81,7 @@ export async function createCheckoutOrder({
       amount_cents: product.amountCents,
       currency: "CNY",
       status: "PENDING",
-      expires_at: addDays(new Date(), 1).toISOString(),
+      expires_at: addMinutes(new Date(), ORDER_EXPIRE_MINUTES).toISOString(),
       metadata: { plan }
     })
     .select("*")
@@ -101,7 +104,102 @@ export async function getOrderByNo(orderNo: string) {
     .select("*")
     .eq("order_no", orderNo)
     .single();
-  return (data as OrderRecord | null) || null;
+  const order = (data as OrderRecord | null) || null;
+  if (!order) return null;
+  return closeExpiredOrder(order);
+}
+
+export function isExpiredPendingOrder(order: Pick<OrderRecord, "status" | "expires_at">) {
+  return (
+    order.status === "PENDING" &&
+    Boolean(order.expires_at) &&
+    new Date(order.expires_at as string).getTime() <= Date.now()
+  );
+}
+
+export async function closeExpiredOrder<T extends OrderRecord>(order: T) {
+  if (!isExpiredPendingOrder(order)) return order;
+
+  const supabase = createSupabaseServiceClient();
+  const { data, error } = await supabase
+    .from("orders")
+    .update({ status: "CLOSED" })
+    .eq("id", order.id)
+    .eq("status", "PENDING")
+    .select("*")
+    .single();
+
+  if (error || !data) {
+    return {
+      ...order,
+      status: "CLOSED" as const
+    };
+  }
+
+  await supabase
+    .from("payments")
+    .update({
+      status: "FAILED",
+      trade_state: "CLOSED",
+      raw_payload: { reason: "order_expired" }
+    })
+    .eq("order_id", order.id)
+    .eq("status", "PENDING");
+
+  return data as T;
+}
+
+export async function closeExpiredOrdersForUser(userId: string) {
+  if (!hasServiceRoleEnv()) return;
+
+  const supabase = createSupabaseServiceClient();
+  const now = new Date().toISOString();
+  const { data } = await supabase
+    .from("orders")
+    .update({ status: "CLOSED" })
+    .eq("user_id", userId)
+    .eq("status", "PENDING")
+    .lt("expires_at", now)
+    .select("id");
+
+  const orderIds = (data || []).map((item) => item.id);
+  if (orderIds.length) {
+    await supabase
+      .from("payments")
+      .update({
+        status: "FAILED",
+        trade_state: "CLOSED",
+        raw_payload: { reason: "order_expired" }
+      })
+      .in("order_id", orderIds)
+      .eq("status", "PENDING");
+  }
+}
+
+export async function closeExpiredOrders() {
+  if (!hasServiceRoleEnv()) return;
+
+  const supabase = createSupabaseServiceClient();
+  const now = new Date().toISOString();
+  const { data } = await supabase
+    .from("orders")
+    .update({ status: "CLOSED" })
+    .eq("status", "PENDING")
+    .lt("expires_at", now)
+    .select("id");
+
+  const orderIds = (data || []).map((item) => item.id);
+  if (orderIds.length) {
+    await supabase
+      .from("payments")
+      .update({
+        status: "FAILED",
+        trade_state: "CLOSED",
+        raw_payload: { reason: "order_expired" }
+      })
+      .in("order_id", orderIds)
+      .eq("status", "PENDING");
+  }
 }
 
 export async function ensurePaymentRecord({
@@ -212,6 +310,9 @@ export async function activatePaidOrder({
   const supabase = createSupabaseServiceClient();
   const order = await getOrderByNo(orderNo);
   if (!order) throw new Error("Order not found.");
+  if (order.status === "CLOSED") {
+    throw new Error("订单已关闭，请重新创建订单。");
+  }
 
   const now = new Date();
   let paidOrder = order;

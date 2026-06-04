@@ -2,14 +2,26 @@ import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { getCurrentProfile } from "@/lib/auth";
 import { hasServiceRoleEnv, hasSupabaseEnv } from "@/lib/env";
-import { createCheckoutOrder } from "@/lib/payments/orders";
+import { closeExpiredOrdersForUser, createCheckoutOrder } from "@/lib/payments/orders";
 import { rateLimited } from "@/lib/security";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 const orderSchema = z.object({
   plan: z.enum(["monthly", "yearly", "single-report"]),
   resultId: z.string().optional().nullable()
 });
+
+function noStoreJson(body: unknown, status = 200) {
+  return NextResponse.json(body, {
+    status,
+    headers: {
+      "Cache-Control": "no-store, no-cache, must-revalidate"
+    }
+  });
+}
 
 export async function POST(request: NextRequest) {
   const limited = rateLimited(request, "create-order");
@@ -17,38 +29,54 @@ export async function POST(request: NextRequest) {
 
   const profile = await getCurrentProfile();
   if (hasSupabaseEnv() && !profile) {
-    return NextResponse.json({ error: "请先登录" }, { status: 401 });
+    return noStoreJson({ error: "请先登录" }, 401);
   }
 
-  const body = orderSchema.safeParse(await request.json());
+  const body = orderSchema.safeParse(await request.json().catch(() => null));
   if (!body.success) {
-    return NextResponse.json({ error: "订单参数错误" }, { status: 400 });
+    return noStoreJson({ error: "订单参数错误" }, 400);
   }
 
-  const order = await createCheckoutOrder({
-    profile:
-      profile ||
-      {
-        id: "00000000-0000-4000-8000-000000000001",
-        email: "demo@soul-house.local",
-        role: "USER"
-      },
-    plan: body.data.plan,
-    resultId: body.data.resultId
-  });
+  if (body.data.plan === "single-report" && !body.data.resultId) {
+    return noStoreJson(
+      { error: "单次解锁需要先选择一份测评报告，请从报告页点击“立即解锁”。" },
+      400
+    );
+  }
 
-  return NextResponse.json({ order });
+  try {
+    const order = await createCheckoutOrder({
+      profile:
+        profile ||
+        {
+          id: "00000000-0000-4000-8000-000000000001",
+          email: "demo@soul-house.local",
+          role: "USER"
+        },
+      plan: body.data.plan,
+      resultId: body.data.resultId
+    });
+
+    return noStoreJson({ order });
+  } catch (error) {
+    return noStoreJson(
+      { error: error instanceof Error ? error.message : "创建订单失败" },
+      400
+    );
+  }
 }
 
 export async function GET() {
   const profile = await getCurrentProfile();
   if (!profile) {
-    return NextResponse.json({ orders: [] });
+    return noStoreJson({ orders: [] });
   }
 
   if (!hasServiceRoleEnv()) {
-    return NextResponse.json({ orders: [] });
+    return noStoreJson({ orders: [] });
   }
+
+  await closeExpiredOrdersForUser(profile.id);
 
   const supabase = createSupabaseServiceClient();
   const { data } = await supabase
@@ -57,5 +85,5 @@ export async function GET() {
     .eq("user_id", profile.id)
     .order("created_at", { ascending: false });
 
-  return NextResponse.json({ orders: data || [] });
+  return noStoreJson({ orders: data || [] });
 }

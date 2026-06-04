@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import { CheckCircle2, Loader2 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { OrderStatusBadge } from "@/components/payment/order-status-badge";
 import { formatCurrency, formatDate } from "@/lib/utils";
 
 type OrderRow = {
@@ -14,6 +14,7 @@ type OrderRow = {
   amount_cents: number;
   status: string;
   created_at: string;
+  expires_at?: string | null;
   users?: {
     email?: string;
     name?: string | null;
@@ -28,8 +29,11 @@ export function OrderAdminPanel({ initialOrders }: { initialOrders: OrderRow[] }
 
   async function load(nextStatus = status) {
     setLoading(true);
-    const response = await fetch(`/api/admin/orders?status=${nextStatus}`);
-    const data = await response.json();
+    const response = await fetch(`/api/admin/orders?status=${nextStatus}`, {
+      credentials: "include",
+      cache: "no-store"
+    });
+    const data = await response.json().catch(() => ({}));
     setOrders(data.orders || []);
     setLoading(false);
   }
@@ -40,9 +44,11 @@ export function OrderAdminPanel({ initialOrders }: { initialOrders: OrderRow[] }
     const response = await fetch("/api/admin/orders", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      cache: "no-store",
       body: JSON.stringify({ action: "markPaid", orderNo, provider: "WECHAT" })
     });
-    const data = await response.json();
+    const data = await response.json().catch(() => ({}));
     setMessage(response.ok ? "订单已标记支付成功" : data.error || "操作失败");
     await load();
   }
@@ -61,7 +67,8 @@ export function OrderAdminPanel({ initialOrders }: { initialOrders: OrderRow[] }
           <option value="ALL">全部状态</option>
           <option value="PENDING">待支付</option>
           <option value="PAID">已支付</option>
-          <option value="FAILED">失败</option>
+          <option value="FAILED">支付失败</option>
+          <option value="CLOSED">已关闭</option>
           <option value="REFUNDED">已退款</option>
         </select>
         {loading ? <Loader2 className="size-5 animate-spin text-primary" /> : null}
@@ -81,16 +88,15 @@ export function OrderAdminPanel({ initialOrders }: { initialOrders: OrderRow[] }
                 <div className="min-w-0">
                   <CardTitle>{order.product_name}</CardTitle>
                   <p className="mt-2 break-all text-sm text-muted-foreground">
-                    {order.order_no} · {order.users?.email || "未知用户"} · {formatDate(order.created_at)}
+                    {order.order_no} · {order.users?.email || "未知用户"} ·{" "}
+                    {formatDate(order.created_at)}
                   </p>
                 </div>
-                <Badge className="w-fit" variant={order.status === "PAID" ? "soft" : "outline"}>
-                  {order.status}
-                </Badge>
+                <OrderStatusBadge status={order.status} expiresAt={order.expires_at} />
               </CardHeader>
               <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <span className="font-semibold">{formatCurrency(order.amount_cents)}</span>
-                {order.status !== "PAID" ? (
+                {order.status === "PENDING" ? (
                   <Button type="button" variant="outline" onClick={() => markPaid(order.order_no)}>
                     <CheckCircle2 />
                     手动标记支付成功

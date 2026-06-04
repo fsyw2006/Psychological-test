@@ -1,26 +1,38 @@
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { OrderStatusBadge } from "@/components/payment/order-status-badge";
 import { getCurrentProfile } from "@/lib/auth";
 import { hasServiceRoleEnv } from "@/lib/env";
+import { closeExpiredOrdersForUser } from "@/lib/payments/orders";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { formatCurrency, formatDate } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+type OrderRow = {
+  id: string;
+  order_no: string;
+  product_name: string;
+  amount_cents: number;
+  status: string;
+  created_at: string;
+  expires_at?: string | null;
+};
+
 export default async function MyOrdersPage() {
   const profile = await getCurrentProfile();
-  let rows: any[] = [];
+  let rows: OrderRow[] = [];
 
   if (profile && hasServiceRoleEnv()) {
     try {
+      await closeExpiredOrdersForUser(profile.id);
       const supabase = createSupabaseServiceClient();
       const { data } = await supabase
         .from("orders")
-        .select("*")
+        .select("id,order_no,product_name,amount_cents,status,created_at,expires_at")
         .eq("user_id", profile.id)
         .order("created_at", { ascending: false });
-      rows = data || [];
+      rows = (data || []) as OrderRow[];
     } catch (error) {
       console.error("Failed to load account orders", error);
     }
@@ -43,9 +55,7 @@ export default async function MyOrdersPage() {
                     {row.order_no} · {formatDate(row.created_at)}
                   </p>
                 </div>
-                <Badge className="w-fit" variant={row.status === "PAID" ? "soft" : "outline"}>
-                  {row.status}
-                </Badge>
+                <OrderStatusBadge status={row.status} expiresAt={row.expires_at} />
               </CardHeader>
               <CardContent className="text-lg font-semibold">
                 {formatCurrency(row.amount_cents)}

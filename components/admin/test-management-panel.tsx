@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import type { Assessment, AssessmentCategory } from "@/lib/types";
 
 export function TestManagementPanel({
@@ -47,9 +48,12 @@ export function TestManagementPanel({
     const draft = drafts[test.slug];
     setSaving(test.slug);
     setMessage("");
+
     const response = await fetch("/api/admin/tests", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      cache: "no-store",
       body: JSON.stringify({
         slug: test.slug,
         enabled: draft.enabled,
@@ -61,7 +65,8 @@ export function TestManagementPanel({
         estimatedMinutes: draft.estimatedMinutes
       })
     });
-    const data = await response.json();
+    const data = await response.json().catch(() => ({}));
+
     setSaving(null);
     setMessage(response.ok ? "测评配置已保存" : data.error || "保存失败");
   }
@@ -88,15 +93,15 @@ export function TestManagementPanel({
               </Badge>
             </CardHeader>
             <CardContent className="grid gap-4 lg:grid-cols-[120px_1fr_160px_120px_auto] lg:items-end">
-              <label className="flex h-11 items-center justify-between gap-3 rounded-md border border-border bg-background/60 px-3 text-sm font-medium lg:justify-center">
+              <div className="flex h-11 items-center justify-between gap-3 rounded-md border border-border bg-background/60 px-3 text-sm font-medium lg:justify-center">
                 启用
-                <input
-                  type="checkbox"
+                <Switch
                   checked={draft.enabled}
                   onChange={(event) => update(test.slug, { enabled: event.target.checked })}
-                  className="size-4 accent-primary"
+                  aria-label={`启用 ${test.title}`}
                 />
-              </label>
+              </div>
+
               <div className="space-y-2">
                 <Label htmlFor={`${test.slug}-category`}>分类</Label>
                 <select
@@ -112,6 +117,7 @@ export function TestManagementPanel({
                   ))}
                 </select>
               </div>
+
               <div className="space-y-2">
                 <Label htmlFor={`${test.slug}-minutes`}>预计时间</Label>
                 <Input
@@ -124,14 +130,17 @@ export function TestManagementPanel({
                   }
                 />
               </div>
+
               <div className="space-y-2">
                 <Label htmlFor={`${test.slug}-count`}>题目数量</Label>
                 <Input id={`${test.slug}-count`} value={draft.questionCount} disabled />
               </div>
+
               <Button onClick={() => save(test)} disabled={saving === test.slug}>
                 {saving === test.slug ? <Loader2 className="animate-spin" /> : <Save />}
                 保存
               </Button>
+
               <div className="space-y-2 lg:col-span-5">
                 <Label htmlFor={`${test.slug}-tags`}>标签</Label>
                 <Input

@@ -5,6 +5,7 @@ import QRCode from "qrcode";
 import { CreditCard, Loader2, QrCode } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ORDER_EXPIRE_MINUTES } from "@/lib/order-status";
 import type { MembershipPlan, PlanSlug } from "@/lib/types";
 import { formatCurrency } from "@/lib/utils";
 
@@ -33,6 +34,7 @@ export function CheckoutPanel({
   const [mockPayment, setMockPayment] = useState<MockPayment | null>(null);
   const [realPayment, setRealPayment] = useState<RealPayment | null>(null);
   const selectedPlan = plans.find((item) => item.slug === plan) || plans[0];
+  const missingReportId = plan === "single-report" && !resultId;
   const successUrl =
     plan === "single-report" && resultId
       ? `/reports/${encodeURIComponent(resultId)}?unlocked=1`
@@ -51,6 +53,11 @@ export function CheckoutPanel({
   }, [codeUrl]);
 
   async function pay() {
+    if (missingReportId) {
+      setError("单次解锁需要先选择一份测评报告，请从报告页点击“立即解锁”。");
+      return;
+    }
+
     setLoading(true);
     setError("");
     setCodeUrl("");
@@ -157,7 +164,9 @@ export function CheckoutPanel({
       return;
     }
 
-    setError(data.providerState?.message || "暂未查询到支付成功，请完成支付后再试。");
+    setError(
+      data.providerState?.message || "暂未查询到支付成功，请完成支付后再试。"
+    );
   }
 
   return (
@@ -202,6 +211,10 @@ export function CheckoutPanel({
           </button>
         </div>
 
+        <div className="rounded-md border border-border bg-background/60 px-3 py-2 text-xs leading-5 text-muted-foreground">
+          订单创建后 {ORDER_EXPIRE_MINUTES} 分钟内未支付会自动关闭，关闭后需要重新创建订单。
+        </div>
+
         {error ? (
           <div className="rounded-md border border-destructive/25 bg-destructive/10 px-3 py-2 text-sm text-destructive">
             {error}
@@ -217,7 +230,9 @@ export function CheckoutPanel({
               className="mx-auto aspect-square w-full max-w-56 rounded-md"
             />
             <p className="mt-3 text-sm text-muted-foreground">
-              {mockPayment ? "当前为模拟支付，点击下方按钮完成测试。" : "请扫码完成支付。"}
+              {mockPayment
+                ? "当前为模拟支付，点击下方按钮完成测试。"
+                : "请扫码完成支付，支付后点击下方按钮查询状态。"}
             </p>
             {mockPayment ? (
               <Button onClick={confirmMockPayment} disabled={loading} className="mt-4 w-full">
@@ -233,7 +248,7 @@ export function CheckoutPanel({
           </div>
         ) : null}
 
-        <Button onClick={pay} disabled={loading} className="w-full" size="lg">
+        <Button onClick={pay} disabled={loading || missingReportId} className="w-full" size="lg">
           {loading ? <Loader2 className="animate-spin" /> : <CreditCard />}
           {loading ? "创建订单中" : "确认支付"}
         </Button>

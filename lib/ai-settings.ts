@@ -5,6 +5,8 @@ export type AiProvider = "openai" | "deepseek" | "claude" | "mock";
 
 export type AiSettings = {
   aiChatEnabled: boolean;
+  aiQuestionBankEnabled: boolean;
+  aiReportTemplateEnabled: boolean;
   aiProvider: AiProvider;
   aiModel: string;
   aiApiKey: string;
@@ -24,6 +26,8 @@ const safetyPrompt =
 export function defaultAiSettings(): AiSettings {
   return {
     aiChatEnabled: false,
+    aiQuestionBankEnabled: false,
+    aiReportTemplateEnabled: false,
     aiProvider: "mock",
     aiModel: "mock-companion",
     aiApiKey: "",
@@ -40,6 +44,12 @@ function normalizeAiSettings(input?: AiSettingsInput | null): AiSettings {
 
   return {
     aiChatEnabled: Boolean(input?.aiChatEnabled ?? base.aiChatEnabled),
+    aiQuestionBankEnabled: Boolean(
+      input?.aiQuestionBankEnabled ?? base.aiQuestionBankEnabled
+    ),
+    aiReportTemplateEnabled: Boolean(
+      input?.aiReportTemplateEnabled ?? base.aiReportTemplateEnabled
+    ),
     aiProvider: ["openai", "deepseek", "claude", "mock"].includes(provider)
       ? provider
       : "mock",
@@ -91,7 +101,7 @@ export async function saveAiSettings(input: AiSettingsInput) {
     {
       key: CONFIG_KEY,
       value: next,
-      description: "AI 聊天隐藏功能配置"
+      description: "AI 隐藏功能配置"
     },
     {
       onConflict: "key"

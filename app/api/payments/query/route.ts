@@ -55,6 +55,19 @@ export async function GET(request: NextRequest) {
     return json({ error: "无权查询该订单。" }, 403);
   }
 
+  if (order.status === "CLOSED") {
+    return json({
+      ok: true,
+      paid: false,
+      closed: true,
+      order,
+      providerState: {
+        tradeState: "CLOSED",
+        message: "订单已超过 15 分钟未支付，已自动关闭，请重新创建订单。"
+      }
+    });
+  }
+
   if (order.status === "PAID") {
     const paidOrder = await activatePaidOrder({
       orderNo,

@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 
 type PaymentField = {
@@ -67,8 +68,11 @@ export function PaymentChannelPanel() {
   const [message, setMessage] = useState("");
 
   async function load() {
-    const response = await fetch("/api/admin/payments");
-    const data = (await response.json()) as PaymentResponse;
+    const response = await fetch("/api/admin/payments", {
+      credentials: "include",
+      cache: "no-store"
+    });
+    const data = (await response.json().catch(() => ({}))) as PaymentResponse;
     setChannels(data.channels || []);
     setStorage(data.storage || "memory");
   }
@@ -97,16 +101,20 @@ export function PaymentChannelPanel() {
     event.preventDefault();
     setSaving(channel.id);
     setMessage("");
+
     const response = await fetch("/api/admin/payments", {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json"
       },
+      credentials: "include",
+      cache: "no-store",
       body: JSON.stringify({
         [channel.id]: channel.editable
       })
     });
-    const data = await response.json();
+    const data = await response.json().catch(() => ({}));
+
     setSaving(null);
     setMessage(response.ok ? "收款通道配置已保存" : data.error || "保存失败");
     if (response.ok) await load();
@@ -159,7 +167,7 @@ export function PaymentChannelPanel() {
                   <p className="text-sm leading-6 text-muted-foreground">
                     {complete
                       ? "必要参数已配置。启用开关打开后会调用真实支付网关。"
-                      : "部分必要参数未配置。当前不会创建真实支付订单，请完善参数并启用真实收款。"}
+                      : "部分必要参数未配置。请先完善参数，确认无误后再启用真实收款。"}
                   </p>
                 </div>
 
@@ -167,8 +175,8 @@ export function PaymentChannelPanel() {
                   {channel.fields.map((field) => (
                     <div
                       key={field.label}
-                    className="flex min-w-0 flex-col gap-1 rounded-md bg-background/60 px-3 py-2 text-sm sm:flex-row sm:items-center sm:justify-between sm:gap-3"
-                  >
+                      className="flex min-w-0 flex-col gap-1 rounded-md bg-background/60 px-3 py-2 text-sm sm:flex-row sm:items-center sm:justify-between sm:gap-3"
+                    >
                       <span className="text-muted-foreground">{field.label}</span>
                       <span className="flex min-w-0 items-center gap-2 break-all font-medium sm:justify-end">
                         {field.configured ? (
@@ -201,17 +209,21 @@ export function PaymentChannelPanel() {
                 </div>
 
                 <form className="space-y-4" onSubmit={(event) => save(event, channel)}>
-                  <label className="flex items-center justify-between gap-3 rounded-md border border-border bg-background/60 px-3 py-2 text-sm font-medium">
-                    启用真实收款
-                    <input
-                      type="checkbox"
+                  <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-background/60 px-3 py-3 text-sm font-medium">
+                    <div>
+                      <p>启用真实收款</p>
+                      <p className="mt-1 text-xs font-normal text-muted-foreground">
+                        开启后会调用真实支付网关，参数未完整时请保持关闭。
+                      </p>
+                    </div>
+                    <Switch
                       checked={Boolean(channel.editable.enabled)}
                       onChange={(event) =>
                         updateChannel(channel.id, "enabled", event.target.checked)
                       }
-                      className="size-4 accent-primary"
+                      aria-label={`启用 ${channel.name} 真实收款`}
                     />
-                  </label>
+                  </div>
 
                   {inputs.map((input) => {
                     const value = String(channel.editable[input.key] || "");
