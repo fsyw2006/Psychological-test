@@ -75,7 +75,7 @@ export async function createAlipayPagePayment(order: OrderRecord) {
       passback_params: randomNonce(8)
     })
   };
-  const signContent = canonicalQuery(params);
+  const signContent = canonicalQuery(params, { includeSignType: true });
   params.sign = await rsaSha256Sign(signContent, config.privateKey);
 
   return {

@@ -105,10 +105,16 @@ export async function decryptWechatResource({
   return new TextDecoder().decode(plain);
 }
 
-export function canonicalQuery(params: Record<string, string>) {
+export function canonicalQuery(
+  params: Record<string, string>,
+  options: { includeSignType?: boolean } = {}
+) {
   return Object.entries(params)
-    .filter(([key]) => key !== "sign" && key !== "sign_type")
-    .sort(([a], [b]) => a.localeCompare(b))
+    .filter(
+      ([key]) =>
+        key !== "sign" && (options.includeSignType || key !== "sign_type")
+    )
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
     .map(([key, value]) => `${key}=${value}`)
     .join("&");
 }
