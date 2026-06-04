@@ -3,6 +3,18 @@ import { getCurrentProfile } from "@/lib/auth";
 import { getAssessmentCatalog } from "@/lib/content";
 import { hasServiceRoleEnv, hasSupabaseEnv } from "@/lib/env";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
+import type { ReportTemplate } from "@/lib/types";
+
+function premiumContent(template: ReportTemplate) {
+  return {
+    traits: template.traits || [],
+    strengths: template.strengths || [],
+    risks: template.risks || [],
+    growth: template.growth || [],
+    careers: template.careers || [],
+    relationships: template.relationships || []
+  };
+}
 
 export async function GET() {
   const profile = await getCurrentProfile();
@@ -40,6 +52,19 @@ export async function PATCH(request: Request) {
   }
 
   const supabase = createSupabaseServiceClient();
+  const { data: testRow, error: readError } = await supabase
+    .from("tests")
+    .select("id,categories(name)")
+    .eq("slug", body.slug)
+    .single();
+
+  if (readError || !testRow) {
+    return NextResponse.json(
+      { error: readError?.message || "测评不存在" },
+      { status: 400 }
+    );
+  }
+
   const { error } = await supabase
     .from("tests")
     .update({
@@ -49,6 +74,34 @@ export async function PATCH(request: Request) {
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 400 });
+  }
+
+  const rows = Object.entries(body.reportTemplates as Record<string, ReportTemplate>).map(
+    ([resultType, template]) => ({
+      test_id: testRow.id,
+      result_type: resultType,
+      basic_content: {
+        title: template.title,
+        summary: template.summary
+      },
+      premium_content: premiumContent(template),
+      suggestions: template.growth || [],
+      category:
+        (testRow.categories as { name?: string } | null | undefined)?.name || "测评",
+      is_active: true
+    })
+  );
+
+  if (rows.length) {
+    const { error: templateError } = await supabase
+      .from("report_templates")
+      .upsert(rows, {
+        onConflict: "test_id,result_type"
+      });
+
+    if (templateError) {
+      return NextResponse.json({ error: templateError.message }, { status: 400 });
+    }
   }
 
   return NextResponse.json({ ok: true });

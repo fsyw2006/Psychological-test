@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 import { revalidatePath } from "next/cache";
 import { requireAdminProfile } from "@/lib/auth";
 import { assessmentCategories, assessments } from "@/lib/demo-data";
@@ -25,7 +25,9 @@ function premiumContent(template: Record<string, unknown>) {
   };
 }
 
-export async function POST() {
+const BATCH_SIZE = 3;
+
+export async function POST(request: NextRequest) {
   await requireAdminProfile();
 
   if (!hasServiceRoleEnv()) {
@@ -38,39 +40,44 @@ export async function POST() {
     );
   }
 
+  const body = await request.json().catch(() => ({}));
+  const cursor = Math.max(0, Number(body?.cursor || 0));
+  const batch = assessments.slice(cursor, cursor + BATCH_SIZE);
   const supabase = createSupabaseServiceClient();
-  const categoryIds = new Map<string, string>();
 
-  for (const [index, category] of assessmentCategories.entries()) {
-    const { data, error } = await supabase
-      .from("categories")
-      .upsert(
-        {
-          slug: category.slug,
-          name: category.name,
-          description: category.description,
-          type: "TEST",
-          sort_order: index
-        },
-        {
-          onConflict: "slug,type"
-        }
-      )
-      .select("id")
-      .single();
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+  const { error: categoryError } = await supabase.from("categories").upsert(
+    assessmentCategories.map((category, index) => ({
+      slug: category.slug,
+      name: category.name,
+      description: category.description,
+      type: "TEST",
+      sort_order: index
+    })),
+    {
+      onConflict: "slug,type"
     }
+  );
 
-    if (data?.id) categoryIds.set(category.slug, data.id);
+  if (categoryError) {
+    return NextResponse.json({ error: categoryError.message }, { status: 400 });
   }
+
+  const { data: categoryRows, error: categoryReadError } = await supabase
+    .from("categories")
+    .select("id,slug")
+    .eq("type", "TEST");
+
+  if (categoryReadError) {
+    return NextResponse.json({ error: categoryReadError.message }, { status: 400 });
+  }
+
+  const categoryIds = new Map((categoryRows || []).map((category) => [category.slug, category.id]));
 
   let repairedTests = 0;
   let repairedQuestions = 0;
   let repairedTemplates = 0;
 
-  for (const test of assessments) {
+  for (const test of batch) {
     const categoryId = categoryIds.get(test.categorySlug);
     if (!categoryId) continue;
 
@@ -168,6 +175,9 @@ export async function POST() {
 
   return NextResponse.json({
     ok: true,
+    cursor,
+    nextCursor: cursor + batch.length < assessments.length ? cursor + batch.length : null,
+    totalTests: assessments.length,
     repairedTests,
     repairedQuestions,
     repairedTemplates
