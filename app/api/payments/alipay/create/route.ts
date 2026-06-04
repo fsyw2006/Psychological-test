@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { getCurrentProfile } from "@/lib/auth";
 import { hasSupabaseEnv } from "@/lib/env";
+import { getPaymentConfig } from "@/lib/payments/config";
 import { createMockPayment, isMockPaymentEnabled } from "@/lib/payments/mock";
 import {
   createAlipayPagePayment,
@@ -31,6 +32,13 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    const paymentConfig = await getPaymentConfig();
+    const useMockPayment = isMockPaymentEnabled() && !paymentConfig.alipay.enabled;
+
+    if (!useMockPayment) {
+      await ensureAlipayPaymentReady();
+    }
+
     const order = await createCheckoutOrder({
       profile:
         profile ||
@@ -43,11 +51,9 @@ export async function POST(request: NextRequest) {
       resultId: body.data.resultId
     });
 
-    if (isMockPaymentEnabled()) {
+    if (useMockPayment) {
       return NextResponse.json({ order, payment: createMockPayment(order, "ALIPAY") });
     }
-
-    await ensureAlipayPaymentReady();
 
     const payment = await createAlipayPagePayment(order);
     return NextResponse.json({ order, payment });
