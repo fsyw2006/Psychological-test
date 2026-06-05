@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { getCurrentProfile } from "@/lib/auth";
 import { getAssessmentCatalog } from "@/lib/content";
 import { hasServiceRoleEnv, hasSupabaseEnv } from "@/lib/env";
@@ -65,44 +66,73 @@ export async function PATCH(request: Request) {
     );
   }
 
-  const { error } = await supabase
+  const reportTemplates = body.reportTemplates as Record<string, ReportTemplate>;
+  const resultTypes = Object.keys(reportTemplates);
+
+  const { error: updateError } = await supabase
     .from("tests")
     .update({
-      report_templates: body.reportTemplates
+      report_templates: reportTemplates
     })
     .eq("slug", body.slug);
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
+  if (updateError) {
+    return NextResponse.json({ error: updateError.message }, { status: 400 });
   }
 
-  const rows = Object.entries(body.reportTemplates as Record<string, ReportTemplate>).map(
-    ([resultType, template]) => ({
-      test_id: testRow.id,
-      result_type: resultType,
-      basic_content: {
-        title: template.title,
-        summary: template.summary
-      },
-      premium_content: premiumContent(template),
-      suggestions: template.growth || [],
-      category:
-        (testRow.categories as { name?: string } | null | undefined)?.name || "测评",
-      is_active: true
-    })
-  );
+  const rows = Object.entries(reportTemplates).map(([resultType, template]) => ({
+    test_id: testRow.id,
+    result_type: resultType,
+    basic_content: {
+      title: template.title,
+      summary: template.summary
+    },
+    premium_content: premiumContent(template),
+    suggestions: template.growth || [],
+    category:
+      (testRow.categories as { name?: string } | null | undefined)?.name || "测评",
+    is_active: true
+  }));
 
   if (rows.length) {
-    const { error: templateError } = await supabase
-      .from("report_templates")
-      .upsert(rows, {
-        onConflict: "test_id,result_type"
-      });
+    const { error: upsertError } = await supabase.from("report_templates").upsert(rows, {
+      onConflict: "test_id,result_type"
+    });
 
-    if (templateError) {
-      return NextResponse.json({ error: templateError.message }, { status: 400 });
+    if (upsertError) {
+      return NextResponse.json({ error: upsertError.message }, { status: 400 });
+    }
+
+    const keepList = resultTypes.map((resultType) => JSON.stringify(resultType)).join(",");
+    if (keepList) {
+      const { error: deleteError } = await supabase
+        .from("report_templates")
+        .delete()
+        .eq("test_id", testRow.id)
+        .not("result_type", "in", `(${keepList})`);
+
+      if (deleteError) {
+        return NextResponse.json({ error: deleteError.message }, { status: 400 });
+      }
+    }
+  } else {
+    const { error: deleteError } = await supabase
+      .from("report_templates")
+      .delete()
+      .eq("test_id", testRow.id);
+
+    if (deleteError) {
+      return NextResponse.json({ error: deleteError.message }, { status: 400 });
     }
   }
 
-  return NextResponse.json({ ok: true });
+  revalidatePath("/admin/reports");
+  revalidatePath("/admin/tests");
+  revalidatePath("/tests");
+
+  return NextResponse.json({
+    ok: true,
+    reportTemplates,
+    resultType: resultTypes[0] || "默认"
+  });
 }

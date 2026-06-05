@@ -246,6 +246,7 @@ export function TestManagementPanel({
 
   async function generateQuestions(test: Assessment) {
     const draft = drafts[test.slug];
+    const previewId = `question-draft-preview-${test.slug}`;
     setGenerating(test.slug);
     setMessage("");
 
@@ -271,7 +272,13 @@ export function TestManagementPanel({
       ...current,
       [test.slug]: data.questions || []
     }));
-    setMessage("AI 题目草稿已生成，请先检查，再保存为正式题目。");
+    setMessage("AI 题目草稿已生成，已跳转到预览区，请检查后再保存为正式题目。");
+    requestAnimationFrame(() => {
+      document.getElementById(previewId)?.scrollIntoView({
+        behavior: "smooth",
+        block: "start"
+      });
+    });
   }
 
   async function applyQuestions(test: Assessment) {
@@ -567,7 +574,21 @@ export function TestManagementPanel({
                 </div>
 
                 {generatedQuestions.length ? (
-                  <div className="mt-4 grid gap-3">
+                  <div
+                    id={`question-draft-preview-${test.slug}`}
+                    className="mt-4 grid gap-3 rounded-lg border border-primary/20 bg-primary/5 p-3"
+                  >
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="font-semibold">AI 题目预览</p>
+                        <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                          本次生成 {generatedQuestions.length} 道草稿题。点击“保存为正式题目”后，会替换当前测评的正式题库。
+                        </p>
+                      </div>
+                      <Badge className="w-fit" variant="soft">
+                        待保存
+                      </Badge>
+                    </div>
                     {generatedQuestions.map((question, index) => (
                       <div
                         key={`${question.id}-${index}`}

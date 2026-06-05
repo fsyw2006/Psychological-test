@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Loader2, Save, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,21 +17,66 @@ type TemplateTest = {
   reportTemplates: Record<string, ReportTemplate>;
 };
 
+function buildDrafts(tests: TemplateTest[]) {
+  return Object.fromEntries(
+    tests.map((test) => [test.slug, JSON.stringify(test.reportTemplates, null, 2)])
+  );
+}
+
+function buildResultTypes(tests: TemplateTest[]) {
+  return Object.fromEntries(
+    tests.map((test) => [test.slug, Object.keys(test.reportTemplates)[0] || "默认"])
+  );
+}
+
+function parseDraftTemplates(value: string) {
+  try {
+    const parsed = JSON.parse(value || "{}");
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, ReportTemplate>)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function TemplateList({
+  title,
+  items
+}: {
+  title: string;
+  items: string[];
+}) {
+  if (!items.length) return null;
+
+  return (
+    <div className="rounded-md border border-border bg-background/70 p-3">
+      <p className="text-xs uppercase tracking-wide text-muted-foreground">{title}</p>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {items.map((item, index) => (
+          <Badge key={`${title}-${index}-${item}`} variant="outline">
+            {item}
+          </Badge>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function ReportTemplateAdmin({ tests }: { tests: TemplateTest[] }) {
   const [categoryFilter, setCategoryFilter] = useState("all");
-  const [drafts, setDrafts] = useState<Record<string, string>>(
-    Object.fromEntries(
-      tests.map((test) => [test.slug, JSON.stringify(test.reportTemplates, null, 2)])
-    )
-  );
-  const [resultTypes, setResultTypes] = useState<Record<string, string>>(
-    Object.fromEntries(
-      tests.map((test) => [test.slug, Object.keys(test.reportTemplates)[0] || "默认"])
-    )
+  const [drafts, setDrafts] = useState<Record<string, string>>(() => buildDrafts(tests));
+  const [resultTypes, setResultTypes] = useState<Record<string, string>>(() =>
+    buildResultTypes(tests)
   );
   const [saving, setSaving] = useState<string | null>(null);
   const [generating, setGenerating] = useState<string | null>(null);
   const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    setDrafts(buildDrafts(tests));
+    setResultTypes(buildResultTypes(tests));
+  }, [tests]);
 
   const categories = useMemo(
     () => Array.from(new Set(tests.map((test) => test.category))).filter(Boolean),
@@ -46,12 +91,14 @@ export function ReportTemplateAdmin({ tests }: { tests: TemplateTest[] }) {
   );
 
   function parseDraft(slug: string) {
-    return JSON.parse(drafts[slug] || "{}") as Record<string, ReportTemplate>;
+    return parseDraftTemplates(drafts[slug] || "{}");
   }
 
   async function save(test: TemplateTest) {
     setSaving(test.slug);
     setMessage("");
+    const previewId = `report-template-preview-${test.slug}`;
+
     try {
       const parsed = parseDraft(test.slug);
       const response = await fetch("/api/admin/report-templates", {
@@ -67,7 +114,28 @@ export function ReportTemplateAdmin({ tests }: { tests: TemplateTest[] }) {
         })
       });
       const data = await response.json().catch(() => ({}));
-      setMessage(response.ok ? "报告模板已保存" : data.error || "保存失败");
+
+      if (!response.ok) {
+        setMessage(data.error || "保存失败");
+        return;
+      }
+
+      const nextTemplates = (data.reportTemplates as Record<string, ReportTemplate>) || parsed;
+      setDrafts((current) => ({
+        ...current,
+        [test.slug]: JSON.stringify(nextTemplates, null, 2)
+      }));
+      setResultTypes((current) => ({
+        ...current,
+        [test.slug]: data.resultType || Object.keys(nextTemplates)[0] || "默认"
+      }));
+      setMessage("报告模板已保存，并已替换为数据库中的正式内容。");
+      requestAnimationFrame(() => {
+        document.getElementById(previewId)?.scrollIntoView({
+          behavior: "smooth",
+          block: "start"
+        });
+      });
     } catch {
       setMessage("JSON 格式不正确，请检查逗号和引号。");
     } finally {
@@ -78,6 +146,7 @@ export function ReportTemplateAdmin({ tests }: { tests: TemplateTest[] }) {
   async function generateTemplate(test: TemplateTest) {
     setGenerating(test.slug);
     setMessage("");
+    const previewId = `report-template-preview-${test.slug}`;
 
     try {
       const parsed = parseDraft(test.slug);
@@ -101,13 +170,24 @@ export function ReportTemplateAdmin({ tests }: { tests: TemplateTest[] }) {
         return;
       }
 
+      const nextTemplates = (data.reportTemplates as Record<string, ReportTemplate>) || parsed;
       setDrafts((current) => ({
         ...current,
-        [test.slug]: JSON.stringify(data.reportTemplates || parsed, null, 2)
+        [test.slug]: JSON.stringify(nextTemplates, null, 2)
       }));
-      setMessage("AI 模板草稿已生成，请检查后点击保存模板。");
+      setResultTypes((current) => ({
+        ...current,
+        [test.slug]: data.resultType || resultTypes[test.slug] || Object.keys(parsed)[0] || "默认"
+      }));
+      setMessage("AI 模板草稿已生成，先查看预览，再点击保存模板。");
+      requestAnimationFrame(() => {
+        document.getElementById(previewId)?.scrollIntoView({
+          behavior: "smooth",
+          block: "start"
+        });
+      });
     } catch {
-      setMessage("当前模板 JSON 格式不正确，修正后才能使用 AI 更新。");
+      setMessage("当前模板 JSON 格式不正确，修正后才能继续 AI 更新。");
     } finally {
       setGenerating(null);
     }
@@ -148,6 +228,9 @@ export function ReportTemplateAdmin({ tests }: { tests: TemplateTest[] }) {
           }
         })();
         const resultTypeOptions = Object.keys(currentDraft);
+        const activeResultType = resultTypes[test.slug] || resultTypeOptions[0] || "默认";
+        const activeTemplate =
+          currentDraft[activeResultType] || Object.values(currentDraft)[0] || null;
 
         return (
           <Card key={test.slug} className="glass-panel min-w-0 overflow-hidden">
@@ -222,6 +305,50 @@ export function ReportTemplateAdmin({ tests }: { tests: TemplateTest[] }) {
                 }
                 className="min-h-80 max-w-full font-mono text-xs leading-5"
               />
+
+              <div
+                id={`report-template-preview-${test.slug}`}
+                className="rounded-lg border border-border bg-background/55 p-4"
+              >
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="font-semibold">AI 模板预览</p>
+                    <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                      当前查看 {activeResultType}。这里展示的是保存后真正会写入数据库的内容。
+                    </p>
+                  </div>
+                  <Badge className="w-fit" variant="soft">
+                    {resultTypeOptions.length} 个结果类型
+                  </Badge>
+                </div>
+
+                {activeTemplate ? (
+                  <div className="mt-4 grid gap-3 lg:grid-cols-[1.1fr_1fr]">
+                    <div className="rounded-md border border-border bg-background/70 p-4">
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground">标题</p>
+                      <p className="mt-1 text-base font-semibold">{activeTemplate.title}</p>
+
+                      <p className="mt-4 text-xs uppercase tracking-wide text-muted-foreground">摘要</p>
+                      <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                        {activeTemplate.summary}
+                      </p>
+                    </div>
+
+                    <div className="grid gap-3">
+                      <TemplateList title="特质" items={activeTemplate.traits || []} />
+                      <TemplateList title="优势" items={activeTemplate.strengths || []} />
+                      <TemplateList title="风险" items={activeTemplate.risks || []} />
+                      <TemplateList title="成长建议" items={activeTemplate.growth || []} />
+                      <TemplateList title="职业建议" items={activeTemplate.careers || []} />
+                      <TemplateList title="关系建议" items={activeTemplate.relationships || []} />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-4 rounded-md border border-dashed border-border bg-background/70 p-4 text-sm text-muted-foreground">
+                    当前没有可预览的模板，请先生成或粘贴 JSON。
+                  </div>
+                )}
+              </div>
             </CardContent>
           </Card>
         );
