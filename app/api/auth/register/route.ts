@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { hasSupabaseEnv } from "@/lib/env";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseRouteClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -60,7 +60,7 @@ export async function POST(request: Request) {
       return noStoreJson({ error: "密码至少需要 8 位字符" }, 400);
     }
 
-    const supabase = await createSupabaseServerClient();
+    const { supabase, applyCookies } = await createSupabaseRouteClient();
     const origin = new URL(request.url).origin;
 
     const { data, error } = await supabase.auth.signUp({
@@ -76,13 +76,15 @@ export async function POST(request: Request) {
       return noStoreJson({ error: getFriendlyRegisterError(error?.message) }, 400);
     }
 
-    return noStoreJson({
-      needsEmailConfirmation: !data.session,
-      user: {
-        email: data.user.email,
-        name: data.user.user_metadata?.name || data.user.email.split("@")[0]
-      }
-    });
+    return applyCookies(
+      noStoreJson({
+        needsEmailConfirmation: !data.session,
+        user: {
+          email: data.user.email,
+          name: data.user.user_metadata?.name || data.user.email.split("@")[0]
+        }
+      })
+    );
   } catch (error) {
     console.error("Register API failed", error);
     return noStoreJson({ error: "注册服务暂时不可用，请稍后再试。" }, 503);

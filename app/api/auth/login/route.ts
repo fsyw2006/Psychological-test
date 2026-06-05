@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { hasSupabaseEnv } from "@/lib/env";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseRouteClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -50,19 +50,21 @@ export async function POST(request: Request) {
       return noStoreJson({ error: "请输入邮箱和密码" }, 400);
     }
 
-    const supabase = await createSupabaseServerClient();
+    const { supabase, applyCookies } = await createSupabaseRouteClient();
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
     if (error || !data.user?.email) {
       return noStoreJson({ error: getFriendlyLoginError(error?.message) }, 401);
     }
 
-    return noStoreJson({
-      user: {
-        email: data.user.email,
-        name: data.user.user_metadata?.name || data.user.email.split("@")[0]
-      }
-    });
+    return applyCookies(
+      noStoreJson({
+        user: {
+          email: data.user.email,
+          name: data.user.user_metadata?.name || data.user.email.split("@")[0]
+        }
+      })
+    );
   } catch (error) {
     console.error("Login API failed", error);
     return noStoreJson({ error: "登录服务暂时不可用，请稍后再试。" }, 503);
