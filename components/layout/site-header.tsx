@@ -21,11 +21,6 @@ type HeaderUser = {
   name?: string | null;
 };
 
-type BrowserSession = {
-  access_token?: string;
-  refresh_token?: string;
-};
-
 async function loadServerUser() {
   const response = await fetch("/api/auth/me", {
     cache: "no-store",
@@ -39,21 +34,6 @@ async function loadServerUser() {
   } | null;
 
   return data?.user?.email ? data.user : null;
-}
-
-async function syncBrowserSession(session?: BrowserSession | null) {
-  if (!session?.access_token) return;
-
-  await fetch("/api/auth/sync", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    credentials: "include",
-    cache: "no-store",
-    body: JSON.stringify({
-      accessToken: session.access_token,
-      refreshToken: session.refresh_token
-    })
-  });
 }
 
 export function SiteHeader({ initialUser = null }: { initialUser?: HeaderUser | null }) {
@@ -89,8 +69,7 @@ export function SiteHeader({ initialUser = null }: { initialUser?: HeaderUser | 
           } = await supabase.auth.getSession();
 
           if (session) {
-            const { data } = await supabase.auth.refreshSession();
-            await syncBrowserSession(data.session || session).catch(() => undefined);
+            await supabase.auth.refreshSession();
             const syncedUser = await loadServerUser();
             if (!alive) return;
 
@@ -116,7 +95,7 @@ export function SiteHeader({ initialUser = null }: { initialUser?: HeaderUser | 
     try {
       const supabase = createSupabaseBrowserClient();
 
-      const { data } = supabase.auth.onAuthStateChange((event, session) => {
+      const { data } = supabase.auth.onAuthStateChange((event) => {
         if (event === "SIGNED_OUT") {
           setUser(null);
           setReady(true);
@@ -124,16 +103,7 @@ export function SiteHeader({ initialUser = null }: { initialUser?: HeaderUser | 
         }
 
         window.setTimeout(() => {
-          if (event === "SIGNED_IN" || event === "INITIAL_SESSION") {
-            void syncBrowserSession(session)
-              .catch(() => undefined)
-              .finally(() => {
-                void refreshUserFromServer(false);
-              });
-            return;
-          }
-
-          void refreshUserFromServer(false);
+          void refreshUserFromServer(event === "SIGNED_IN" || event === "INITIAL_SESSION");
         }, 0);
       });
 
