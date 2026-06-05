@@ -38,8 +38,7 @@ const securityHeaders = [
       "object-src 'none'",
       "base-uri 'self'",
       "form-action 'self' https://openapi.alipay.com",
-      "frame-ancestors 'self'",
-      "upgrade-insecure-requests"
+      "frame-ancestors 'self'"
     ].join("; ")
   }
 ];
