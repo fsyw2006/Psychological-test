@@ -1,5 +1,4 @@
 import { membershipPlans } from "@/lib/demo-data";
-import { ensureContentSeeded } from "@/lib/bootstrap";
 import { hasServiceRoleEnv } from "@/lib/env";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import type { MembershipPlan, PlanSlug } from "@/lib/types";
@@ -62,15 +61,19 @@ function normalizeConfig(input: PricingConfigInput | null | undefined): PricingC
 async function loadStoredPricing() {
   if (!hasServiceRoleEnv()) return memoryPricingConfig;
 
-  await ensureContentSeeded();
-  const supabase = createSupabaseServiceClient();
-  const { data } = await supabase
-    .from("system_configs")
-    .select("value")
-    .eq("key", CONFIG_KEY)
-    .maybeSingle();
+  try {
+    const supabase = createSupabaseServiceClient();
+    const { data } = await supabase
+      .from("system_configs")
+      .select("value")
+      .eq("key", CONFIG_KEY)
+      .maybeSingle();
 
-  return data?.value ? normalizeConfig(data.value as PricingConfigInput) : null;
+    return data?.value ? normalizeConfig(data.value as PricingConfigInput) : null;
+  } catch (error) {
+    console.error("Failed to load pricing config", error);
+    return memoryPricingConfig;
+  }
 }
 
 export async function getPricingConfig(): Promise<PricingConfig> {

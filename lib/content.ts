@@ -1,5 +1,4 @@
 import { articles, assessmentCategories, assessments } from "@/lib/demo-data";
-import { ensureContentSeeded } from "@/lib/bootstrap";
 import { hasServiceRoleEnv } from "@/lib/env";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import type { Article, Assessment, AssessmentQuestion } from "@/lib/types";
@@ -86,27 +85,31 @@ function normalizeTest(row: Record<string, any>): Assessment {
 export async function getAssessmentCatalog({
   includeQuestions = true
 }: { includeQuestions?: boolean } = {}) {
+  const fallbackList = visibleAssessments(assessments);
+
   if (!hasServiceRoleEnv()) {
-    const list = visibleAssessments(assessments);
-    return includeQuestions ? list : stripQuestions(list);
+    return includeQuestions ? fallbackList : stripQuestions(fallbackList);
   }
 
-  await ensureContentSeeded();
-  const supabase = createSupabaseServiceClient();
-  const select = includeQuestions
-    ? "*, categories(slug,name), questions(*)"
-    : "*, categories(slug,name)";
-  const { data, error } = await supabase
-    .from("tests")
-    .select(select)
-    .eq("status", "PUBLISHED")
-    .order("created_at", { ascending: true });
+  try {
+    const supabase = createSupabaseServiceClient();
+    const select = includeQuestions
+      ? "*, categories(slug,name), questions(*)"
+      : "*, categories(slug,name)";
+    const { data, error } = await supabase
+      .from("tests")
+      .select(select)
+      .eq("status", "PUBLISHED")
+      .order("created_at", { ascending: true });
 
-  if (error || !data?.length) {
-    const list = visibleAssessments(assessments);
-    return includeQuestions ? list : stripQuestions(list);
+    if (error || !data?.length) {
+      return includeQuestions ? fallbackList : stripQuestions(fallbackList);
+    }
+    return visibleAssessments(data.map(normalizeTest));
+  } catch (error) {
+    console.error("Failed to load assessment catalog", error);
+    return includeQuestions ? fallbackList : stripQuestions(fallbackList);
   }
-  return visibleAssessments(data.map(normalizeTest));
 }
 
 export async function getAssessmentBySlug(slug: string) {
@@ -116,71 +119,83 @@ export async function getAssessmentBySlug(slug: string) {
     return assessments.find((test) => test.slug === slug) || null;
   }
 
-  await ensureContentSeeded();
-  const supabase = createSupabaseServiceClient();
-  const { data, error } = await supabase
-    .from("tests")
-    .select("*, categories(slug,name), questions(*)")
-    .eq("slug", slug)
-    .eq("status", "PUBLISHED")
-    .single();
+  try {
+    const supabase = createSupabaseServiceClient();
+    const { data, error } = await supabase
+      .from("tests")
+      .select("*, categories(slug,name), questions(*)")
+      .eq("slug", slug)
+      .eq("status", "PUBLISHED")
+      .single();
 
-  if (error || !data) {
+    if (error || !data) {
+      return assessments.find((test) => test.slug === slug) || null;
+    }
+
+    return normalizeTest(data);
+  } catch (error) {
+    console.error("Failed to load assessment by slug", error);
     return assessments.find((test) => test.slug === slug) || null;
   }
-
-  return normalizeTest(data);
 }
 
 export async function getCategories() {
   if (!hasServiceRoleEnv()) return assessmentCategories;
 
-  await ensureContentSeeded();
-  const supabase = createSupabaseServiceClient();
-  const { data, error } = await supabase
-    .from("categories")
-    .select("slug,name,description")
-    .eq("type", "TEST")
-    .order("sort_order", { ascending: true });
+  try {
+    const supabase = createSupabaseServiceClient();
+    const { data, error } = await supabase
+      .from("categories")
+      .select("slug,name,description")
+      .eq("type", "TEST")
+      .order("sort_order", { ascending: true });
 
-  if (error || !data?.length) return assessmentCategories;
-  return data.map((item) => ({
-    slug: item.slug,
-    name: item.name,
-    description: item.description || ""
-  }));
+    if (error || !data?.length) return assessmentCategories;
+    return data.map((item) => ({
+      slug: item.slug,
+      name: item.name,
+      description: item.description || ""
+    }));
+  } catch (error) {
+    console.error("Failed to load categories", error);
+    return assessmentCategories;
+  }
 }
 
 export async function getArticles(limit?: number) {
   if (!hasServiceRoleEnv()) return typeof limit === "number" ? articles.slice(0, limit) : articles;
 
-  await ensureContentSeeded();
-  const supabase = createSupabaseServiceClient();
-  let query = supabase
-    .from("articles")
-    .select("*, categories(name)")
-    .eq("status", "PUBLISHED")
-    .order("published_at", { ascending: false });
+  try {
+    const supabase = createSupabaseServiceClient();
+    let query = supabase
+      .from("articles")
+      .select("*, categories(name)")
+      .eq("status", "PUBLISHED")
+      .order("published_at", { ascending: false });
 
-  if (typeof limit === "number") {
-    query = query.limit(limit);
+    if (typeof limit === "number") {
+      query = query.limit(limit);
+    }
+
+    const { data, error } = await query;
+
+    if (error || !data?.length) return typeof limit === "number" ? articles.slice(0, limit) : articles;
+    return data.map(
+      (item): Article => ({
+        slug: item.slug,
+        title: item.title,
+        excerpt: item.excerpt,
+        content: item.content,
+        category: item.categories?.name || "心理文章",
+        tags: item.tags || [],
+        readingMinutes: item.reading_minutes,
+        publishedAt: item.published_at || item.created_at
+      })
+    );
+  } catch (error) {
+    console.error("Failed to load articles", error);
+    return typeof limit === "number" ? articles.slice(0, limit) : articles;
   }
-
-  const { data, error } = await query;
-
-  if (error || !data?.length) return typeof limit === "number" ? articles.slice(0, limit) : articles;
-  return data.map(
-    (item): Article => ({
-      slug: item.slug,
-      title: item.title,
-      excerpt: item.excerpt,
-      content: item.content,
-      category: item.categories?.name || "心理文章",
-      tags: item.tags || [],
-      readingMinutes: item.reading_minutes,
-      publishedAt: item.published_at || item.created_at
-    })
-  );
 }
 
 export async function getArticleBySlug(slug: string) {
