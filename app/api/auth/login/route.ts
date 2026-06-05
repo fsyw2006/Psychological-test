@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { setFallbackSessionCookie } from "@/lib/auth-session-cookie";
 import { hasSupabaseEnv } from "@/lib/env";
 import { createSupabaseRouteClient } from "@/lib/supabase/server";
 
@@ -57,14 +58,16 @@ export async function POST(request: Request) {
       return noStoreJson({ error: getFriendlyLoginError(error?.message) }, 401);
     }
 
-    return applyCookies(
-      noStoreJson({
-        user: {
-          email: data.user.email,
-          name: data.user.user_metadata?.name || data.user.email.split("@")[0]
-        }
-      })
-    );
+    const response = noStoreJson({
+      user: {
+        email: data.user.email,
+        name: data.user.user_metadata?.name || data.user.email.split("@")[0]
+      }
+    });
+
+    setFallbackSessionCookie(response, data.session);
+
+    return applyCookies(response);
   } catch (error) {
     console.error("Login API failed", error);
     return noStoreJson({ error: "登录服务暂时不可用，请稍后再试。" }, 503);

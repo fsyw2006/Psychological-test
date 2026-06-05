@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { setFallbackSessionCookie } from "@/lib/auth-session-cookie";
 import { hasSupabaseEnv } from "@/lib/env";
 import { createSupabaseRouteClient } from "@/lib/supabase/server";
 
@@ -8,8 +9,10 @@ export async function GET(request: NextRequest) {
 
   if (code && hasSupabaseEnv()) {
     const { supabase, applyCookies } = await createSupabaseRouteClient();
-    await supabase.auth.exchangeCodeForSession(code);
-    return applyCookies(NextResponse.redirect(new URL(next, request.url)));
+    const { data } = await supabase.auth.exchangeCodeForSession(code);
+    const response = NextResponse.redirect(new URL(next, request.url));
+    setFallbackSessionCookie(response, data.session);
+    return applyCookies(response);
   }
 
   return NextResponse.redirect(new URL(next, request.url));

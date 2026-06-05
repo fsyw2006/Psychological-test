@@ -1,5 +1,6 @@
 import { type EmailOtpType } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
+import { setFallbackSessionCookie } from "@/lib/auth-session-cookie";
 import { hasSupabaseEnv } from "@/lib/env";
 import { createSupabaseRouteClient } from "@/lib/supabase/server";
 
@@ -15,13 +16,15 @@ export async function GET(request: NextRequest) {
 
     if (tokenHash && type && hasSupabaseEnv()) {
       const { supabase, applyCookies } = await createSupabaseRouteClient();
-      const { error } = await supabase.auth.verifyOtp({
+      const { data, error } = await supabase.auth.verifyOtp({
         type,
         token_hash: tokenHash
       });
 
       if (!error) {
-        return applyCookies(NextResponse.redirect(redirectTo));
+        const response = NextResponse.redirect(redirectTo);
+        setFallbackSessionCookie(response, data.session);
+        return applyCookies(response);
       }
     }
   } catch (error) {

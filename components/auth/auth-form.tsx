@@ -105,10 +105,23 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
 
       if (mode === "login") {
         const supabase = createSupabaseBrowserClient();
-        await supabase.auth.signInWithPassword({
+        const { data: browserAuth } = await supabase.auth.signInWithPassword({
           email: cleanEmail,
           password
         });
+
+        if (browserAuth.session?.access_token) {
+          await fetch("/api/auth/sync", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            cache: "no-store",
+            body: JSON.stringify({
+              accessToken: browserAuth.session.access_token,
+              refreshToken: browserAuth.session.refresh_token
+            })
+          });
+        }
       }
 
       setMessage(mode === "login" ? "登录成功，正在进入用户中心..." : "注册成功，正在进入用户中心...");

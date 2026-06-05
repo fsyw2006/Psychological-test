@@ -1,5 +1,10 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import {
+  getFallbackAuthSession,
+  getFallbackSessionCookieValue,
+  setFallbackSessionCookie
+} from "@/lib/auth-session-cookie";
 
 type SupabaseCookieToSet = {
   name: string;
@@ -41,7 +46,18 @@ export async function updateSession(request: NextRequest) {
       error
     } = await supabase.auth.getUser();
 
-    if (isProtected && (error || !user)) {
+    let authUser = user;
+
+    if (error || !authUser) {
+      const fallbackSession = await getFallbackAuthSession(getFallbackSessionCookieValue(request));
+      authUser = fallbackSession?.user ?? null;
+
+      if (fallbackSession?.session) {
+        response = setFallbackSessionCookie(response, fallbackSession.session);
+      }
+    }
+
+    if (isProtected && !authUser) {
       return redirectToLogin(request, pathname);
     }
 

@@ -1,4 +1,6 @@
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
+import { AUTH_SESSION_COOKIE, getFallbackAuthSession } from "@/lib/auth-session-cookie";
 import { getAdminEmails, hasServiceRoleEnv, hasSupabaseEnv } from "@/lib/env";
 import {
   createSupabaseServerClient,
@@ -24,11 +26,22 @@ export async function getCurrentProfile() {
 
     const supabase = await createSupabaseServerClient();
     const {
-      data: { user },
+      data: { user: supabaseUser },
       error
     } = await supabase.auth.getUser();
 
-    if (error || !user?.email) return null;
+    let user = supabaseUser;
+
+    if (error || !user?.email) {
+      const cookieStore = await cookies();
+      const fallbackSession = await getFallbackAuthSession(
+        cookieStore.get(AUTH_SESSION_COOKIE)?.value
+      );
+
+      user = fallbackSession?.user ?? null;
+    }
+
+    if (!user?.email) return null;
 
     if (!hasServiceRoleEnv()) {
       return {

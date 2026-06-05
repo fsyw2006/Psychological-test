@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { setFallbackSessionCookie } from "@/lib/auth-session-cookie";
 import { hasSupabaseEnv } from "@/lib/env";
 import { createSupabaseRouteClient } from "@/lib/supabase/server";
 
@@ -76,15 +77,17 @@ export async function POST(request: Request) {
       return noStoreJson({ error: getFriendlyRegisterError(error?.message) }, 400);
     }
 
-    return applyCookies(
-      noStoreJson({
-        needsEmailConfirmation: !data.session,
-        user: {
-          email: data.user.email,
-          name: data.user.user_metadata?.name || data.user.email.split("@")[0]
-        }
-      })
-    );
+    const response = noStoreJson({
+      needsEmailConfirmation: !data.session,
+      user: {
+        email: data.user.email,
+        name: data.user.user_metadata?.name || data.user.email.split("@")[0]
+      }
+    });
+
+    setFallbackSessionCookie(response, data.session);
+
+    return applyCookies(response);
   } catch (error) {
     console.error("Register API failed", error);
     return noStoreJson({ error: "注册服务暂时不可用，请稍后再试。" }, 503);
