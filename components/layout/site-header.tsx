@@ -36,6 +36,12 @@ async function loadServerUser() {
   return data?.user?.email ? data.user : null;
 }
 
+function wait(ms: number) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
 export function SiteHeader({ initialUser = null }: { initialUser?: HeaderUser | null }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -69,7 +75,7 @@ export function SiteHeader({ initialUser = null }: { initialUser?: HeaderUser | 
           } = await supabase.auth.getSession();
 
           if (session) {
-            await supabase.auth.refreshSession();
+            await Promise.race([supabase.auth.refreshSession(), wait(1200)]);
             const syncedUser = await loadServerUser();
             if (!alive) return;
 

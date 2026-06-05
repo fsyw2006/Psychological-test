@@ -43,6 +43,27 @@ function getFriendlyAuthError(error?: string) {
   return error || "操作失败，请稍后再试。";
 }
 
+function wait(ms: number) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
+async function syncBrowserLogin(email: string, password: string) {
+  try {
+    const supabase = createSupabaseBrowserClient();
+    await Promise.race([
+      supabase.auth.signInWithPassword({
+        email,
+        password
+      }),
+      wait(1200)
+    ]);
+  } catch {
+    // Server login already succeeded; Safari browser-session sync must not block navigation.
+  }
+}
+
 export function AuthForm({ mode }: { mode: "login" | "register" }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -103,17 +124,16 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
         return;
       }
 
+      setMessage(mode === "login" ? "登录成功，正在进入用户中心..." : "注册成功，正在进入用户中心...");
+
       if (mode === "login") {
-        const supabase = createSupabaseBrowserClient();
-        await supabase.auth.signInWithPassword({
-          email: cleanEmail,
-          password
-        });
+        await syncBrowserLogin(cleanEmail, password);
       }
 
-      setMessage(mode === "login" ? "登录成功，正在进入用户中心..." : "注册成功，正在进入用户中心...");
-      router.refresh();
-      window.location.replace(next);
+      router.replace(next);
+      window.setTimeout(() => {
+        window.location.assign(next);
+      }, 80);
     } catch (error) {
       const isAbort = error instanceof DOMException && error.name === "AbortError";
       setMessage(isAbort ? "请求超时，请稍后再试。" : "网络请求失败，请刷新页面后再试。");
