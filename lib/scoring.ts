@@ -1,6 +1,7 @@
 import { nanoid } from "nanoid";
 import type {
   Assessment,
+  AssessmentAnswerDetail,
   AssessmentAnswerInput,
   AssessmentOption,
   AssessmentResult,
@@ -38,6 +39,30 @@ function templateFor(test: Assessment, type: string): ReportTemplate {
     test.reportTemplates["默认"] ||
     Object.values(test.reportTemplates)[0]
   );
+}
+
+export function buildAnswerDetails(
+  test: Assessment,
+  answers: AssessmentAnswerInput[]
+): AssessmentAnswerDetail[] {
+  const answerMap = new Map(answers.map((answer) => [answer.questionId, answer.values]));
+
+  return test.questions
+    .map((question, index) => {
+      const selectedValues = answerMap.get(question.id) || [];
+      const selectedLabels = selectedValues.map(
+        (value) => optionByValue(question.options, value)?.label || value
+      );
+
+      return {
+        questionId: question.id,
+        questionOrder: index + 1,
+        questionTitle: question.title,
+        selectedValues,
+        selectedLabels
+      };
+    })
+    .filter((item) => item.selectedValues.length > 0);
 }
 
 export function scoreAssessment(
@@ -114,6 +139,7 @@ export function scoreAssessment(
     summary: advanced.summary,
     dimensions,
     advanced,
+    answerDetails: buildAnswerDetails(test, answers),
     isUnlocked: unlocked,
     createdAt: new Date().toISOString()
   };

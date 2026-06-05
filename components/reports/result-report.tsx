@@ -128,6 +128,7 @@ export function ResultReport({
 
   const percent = Math.round((result.score / Math.max(1, result.maxScore)) * 100);
   const dimensions = Object.entries(result.dimensions || {}).sort((a, b) => b[1] - a[1]);
+  const answerDetails = result.answerDetails || [];
   const showDisclaimer =
     result.category.includes("情绪") ||
     ["phq-9", "gad-7", "stress-index", "sleep-quality", "social-anxiety"].includes(
@@ -182,6 +183,41 @@ export function ResultReport({
                 <p className="text-sm text-muted-foreground">简要说明</p>
                 <p className="mt-2 leading-7">{result.title}</p>
               </div>
+              {answerDetails.length ? (
+                <div className="rounded-md bg-background/[0.56] p-4">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <p className="text-sm font-medium">题目与选择答案</p>
+                    <span className="shrink-0 text-xs text-muted-foreground">
+                      {answerDetails.length} 题
+                    </span>
+                  </div>
+                  <div className="max-h-80 space-y-3 overflow-y-auto pr-1">
+                    {answerDetails.map((answer) => (
+                      <div
+                        key={answer.questionId}
+                        className="rounded-md border border-border/70 bg-muted/35 p-3"
+                      >
+                        <p className="text-sm leading-6">
+                          <span className="mr-1 text-muted-foreground">
+                            第 {answer.questionOrder} 题
+                          </span>
+                          {answer.questionTitle}
+                        </p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {answer.selectedLabels.map((label, index) => (
+                            <span
+                              key={`${answer.questionId}-${answer.selectedValues[index] || label}`}
+                              className="rounded-full bg-primary/15 px-2.5 py-1 text-xs text-primary"
+                            >
+                              {label}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
               {dimensions.length ? (
                 <div className="space-y-3">
                   {dimensions.map(([name, value]) => (

@@ -1,10 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getCurrentProfile } from "@/lib/auth";
 import { reportAdvancedSource } from "@/lib/ai-report";
+import { getAssessmentBySlug } from "@/lib/content";
 import { hasServiceRoleEnv } from "@/lib/env";
+import { buildAnswerDetails } from "@/lib/scoring";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { safeJson } from "@/lib/utils";
-import type { ReportTemplate } from "@/lib/types";
+import type { AssessmentAnswerDetail, AssessmentAnswerInput, ReportTemplate } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -90,6 +92,23 @@ export async function GET(
     careers: [],
     relationships: []
   });
+  let answerDetails: AssessmentAnswerDetail[] = [];
+  const testSlug = data.tests?.slug;
+
+  if (testSlug) {
+    const [{ data: answerRows }, test] = await Promise.all([
+      supabase.from("answers").select("question_id,values").eq("result_id", id),
+      getAssessmentBySlug(testSlug)
+    ]);
+
+    if (test && answerRows?.length) {
+      const answers: AssessmentAnswerInput[] = answerRows.map((answer) => ({
+        questionId: answer.question_id,
+        values: safeJson<string[]>(answer.values, [])
+      }));
+      answerDetails = buildAnswerDetails(test, answers);
+    }
+  }
 
   return noStoreJson({
     result: {
@@ -106,6 +125,7 @@ export async function GET(
       advanced,
       advancedSource: reportAdvancedSource(advanced),
       advancedAiStatus: advanced.aiStatus,
+      answerDetails,
       isUnlocked,
       createdAt: data.created_at
     }

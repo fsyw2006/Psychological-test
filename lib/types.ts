@@ -77,6 +77,14 @@ export type AssessmentAnswerInput = {
   values: string[];
 };
 
+export type AssessmentAnswerDetail = {
+  questionId: string;
+  questionOrder: number;
+  questionTitle: string;
+  selectedValues: string[];
+  selectedLabels: string[];
+};
+
 export type AssessmentResult = {
   id: string;
   testSlug: string;
@@ -91,6 +99,7 @@ export type AssessmentResult = {
   advanced: ReportTemplate;
   advancedSource?: "template" | "ai";
   advancedAiStatus?: ReportTemplate["aiStatus"];
+  answerDetails?: AssessmentAnswerDetail[];
   isUnlocked: boolean;
   createdAt: string;
 };
