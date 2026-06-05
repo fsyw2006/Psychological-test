@@ -7,6 +7,7 @@ import { Loader2, Mail, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 function getFriendlyAuthError(error?: string) {
   const message = (error || "").toLowerCase();
@@ -100,6 +101,14 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
       if (mode === "register" && result?.needsEmailConfirmation) {
         setMessage("注册邮件已发送，请打开邮箱完成确认。");
         return;
+      }
+
+      if (mode === "login") {
+        const supabase = createSupabaseBrowserClient();
+        await supabase.auth.signInWithPassword({
+          email: cleanEmail,
+          password
+        });
       }
 
       setMessage(mode === "login" ? "登录成功，正在进入用户中心..." : "注册成功，正在进入用户中心...");

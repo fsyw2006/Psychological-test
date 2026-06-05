@@ -21,20 +21,19 @@ type HeaderUser = {
   name?: string | null;
 };
 
-type SupabaseAuthUser = {
-  email?: string;
-  user_metadata?: Record<string, unknown>;
-};
+async function loadServerUser() {
+  const response = await fetch("/api/auth/me", {
+    cache: "no-store",
+    credentials: "include"
+  });
 
-function toHeaderUser(authUser?: SupabaseAuthUser | null): HeaderUser | null {
-  if (!authUser?.email) return null;
+  if (!response.ok) return null;
 
-  const metaName = authUser.user_metadata?.name || authUser.user_metadata?.full_name;
+  const data = (await response.json().catch(() => null)) as {
+    user?: HeaderUser | null;
+  } | null;
 
-  return {
-    email: authUser.email,
-    name: typeof metaName === "string" ? metaName : null
-  };
+  return data?.user?.email ? data.user : null;
 }
 
 export function SiteHeader({ initialUser = null }: { initialUser?: HeaderUser | null }) {
@@ -52,34 +51,60 @@ export function SiteHeader({ initialUser = null }: { initialUser?: HeaderUser | 
   useEffect(() => {
     let alive = true;
 
-    fetch("/api/auth/me", { cache: "no-store" })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data: { user?: HeaderUser | null } | null) => {
+    async function refreshUserFromServer(allowBrowserRefresh = false) {
+      try {
+        const serverUser = await loadServerUser();
         if (!alive) return;
-        if (data?.user?.email) setUser(data.user);
-        else if (!initialUser) setUser(null);
+
+        if (serverUser) {
+          setUser(serverUser);
+          setReady(true);
+          return;
+        }
+
+        if (allowBrowserRefresh) {
+          const supabase = createSupabaseBrowserClient();
+          const {
+            data: { session }
+          } = await supabase.auth.getSession();
+
+          if (session) {
+            await supabase.auth.refreshSession();
+            const syncedUser = await loadServerUser();
+            if (!alive) return;
+
+            if (syncedUser) {
+              setUser(syncedUser);
+              setReady(true);
+              return;
+            }
+          }
+        }
+
+        if (!initialUser) setUser(null);
         setReady(true);
-      })
-      .catch(() => {
-        if (alive) setReady(true);
-      });
+      } catch {
+        if (!alive) return;
+        if (!initialUser) setUser(null);
+        setReady(true);
+      }
+    }
+
+    void refreshUserFromServer(true);
 
     try {
       const supabase = createSupabaseBrowserClient();
 
-      const setAuthUser = (authUser?: SupabaseAuthUser | null, forceClear = false) => {
-        if (!alive) return;
+      const { data } = supabase.auth.onAuthStateChange((event) => {
+        if (event === "SIGNED_OUT") {
+          setUser(null);
+          setReady(true);
+          return;
+        }
 
-        const nextUser = toHeaderUser(authUser);
-        if (nextUser) setUser(nextUser);
-        else if (forceClear) setUser(null);
-        setReady(true);
-      };
-
-      supabase.auth.getUser().then(({ data }) => setAuthUser(data.user));
-
-      const { data } = supabase.auth.onAuthStateChange((event, session) => {
-        setAuthUser(session?.user, event === "SIGNED_OUT");
+        window.setTimeout(() => {
+          void refreshUserFromServer(event === "SIGNED_IN" || event === "INITIAL_SESSION");
+        }, 0);
       });
 
       return () => {
